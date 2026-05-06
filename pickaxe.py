@@ -11,9 +11,12 @@
 #     Inspired by years of hoarding useful scripts in the wrong repos.
 #     "You don't lose your tools — you just forget where you put them."
 #
-# CREATED: 26-0506 - by: Joe Negron <joe.negron.nyc@gmail.com>
+# CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
+# UPDATED: 26-0506 - BY: wwwizards <github.com/wwwizards> - initial public release
 # VERSION: v0.1.0
 # LICENSE: MIT - https://opensource.org/licenses/MIT
+# COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
+# AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
 #
 # USAGE:
 #     python pickaxe.py [root_dir] [options]
