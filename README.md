@@ -12,9 +12,24 @@ Scans a workspace directory tree, scores each script by how "tool-worthy" it is 
 
 ## Prerequisites
 
-- Python 3.8+
-- `git` in PATH (for commit-count scoring)
-- `git-filter-repo` (for the suggested extraction commands — `brew install git-filter-repo`)
+### v0.1 — discovery mode (current)
+
+| Dependency | Purpose | Install |
+|---|---|---|
+| Python 3.8+ | runs the script | pre-installed on macOS |
+| `git` | commit-count scoring (`git log --follow`) | pre-installed |
+| `git-filter-repo` | suggested extraction commands are printed but **not executed** | `brew install git-filter-repo` |
+
+No `pip install` required — stdlib only.
+
+### v0.2 — execute mode (planned)
+
+Adds two runtime requirements on top of the above:
+
+| Dependency | Purpose | Install |
+|---|---|---|
+| `git-filter-repo` | **actually runs** the extraction (required, not just suggested) | macOS: `brew install git-filter-repo` · Linux: `pip install git-filter-repo` |
+| `gh` CLI | creates the remote repo (`gh repo create`) | macOS: `brew install gh` · Linux/Windows: see [cli.github.com](https://cli.github.com) · then `gh auth login` |
 
 ---
 
@@ -115,6 +130,8 @@ The `AUTODOC:` field closes the loop — it tells pickaxe (and future readers) h
 ---
 
 ## Roadmap
+
+> Full AS-IS vs TO-BE breakdown, v0.2 feature spec, and version plan: **[ROADMAP.md](ROADMAP.md)**
 
 - [ ] `--format json` output for piping into other tools
 - [ ] `--since <date>` — only score files modified after a date
