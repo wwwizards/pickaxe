@@ -12,8 +12,8 @@
 #     "You don't lose your tools — you just forget where you put them."
 #
 # CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
-# UPDATED: 26-0506 - BY: wwwizards <github.com/wwwizards> - initial public release
-# VERSION: v0.1.0
+# UPDATED: 26-0519 - BY: wwwizards <github.com/wwwizards> - add --dry-run pipeline output
+# VERSION: v0.1.1
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -25,6 +25,7 @@
 #     python pickaxe.py ~/DATA/projects
 #     python pickaxe.py ~/DATA/projects --min-score 2 --output pickaxe-report.md
 #     python pickaxe.py ~/DATA/projects --extensions .py .ps1 .sh
+#     python pickaxe.py ~/DATA/projects --dry-run --output extraction-plan.md
 # --------------------------------------------------------------------------
 
 import os
@@ -90,6 +91,42 @@ def git_filter_repo_cmd(git_root, file_path):
         f"  # Clone first: git clone {git_root} /tmp/extracted-repo\n"
         f"  git -C /tmp/extracted-repo filter-repo --path '{rel}' --force"
     )
+
+
+def extraction_script(git_root, file_path):
+    """
+    # --------------------------------------------------------------------------
+    # FUNCTION: extraction_script
+    # --------------------------------------------------------------------------
+    # ABSTRACT: Return a complete copy-pasteable extraction pipeline for one file.
+    #     Emits a fully-runnable bash script: clone → filter-repo → optionally push.
+    # RETURNS:  str
+    # --------------------------------------------------------------------------
+    """
+    rel = os.path.relpath(file_path, git_root)
+    stem = os.path.splitext(os.path.basename(file_path))[0]
+    dest_name = stem.lower().replace('_', '-')
+    lines = [
+        f'# --- extraction pipeline: {rel} ---',
+        f'DEST_NAME="{dest_name}"  # rename as needed',
+        f'SOURCE_REPO="{git_root}"',
+        f'CLONE_TMP="/tmp/pickaxe-extract-${{DEST_NAME}}"',
+        f'',
+        f'# 1. Clone source repo (filter-repo requires a fresh clone)',
+        f'git clone "$SOURCE_REPO" "$CLONE_TMP"',
+        f'',
+        f'# 2. Extract with full history',
+        f"git -C \"$CLONE_TMP\" filter-repo --path '{rel}' --force",
+        f'',
+        f'# 3. Move to destination (or re-clone for a clean working copy)',
+        f'mv "$CLONE_TMP" ~/DATA/miners/"$DEST_NAME"',
+        f'# Alternative: git clone "$CLONE_TMP" ~/DATA/miners/"$DEST_NAME" && rm -rf "$CLONE_TMP"',
+        f'',
+        f'# 4. Create remote + push (requires gh CLI; uncomment when ready)',
+        f'# cd ~/DATA/miners/"$DEST_NAME"',
+        f'# gh repo create wwwizards/"$DEST_NAME" --private --source=. --push',
+    ]
+    return '\n'.join(lines)
 
 
 def parse_header(file_path, max_lines=60):
@@ -198,6 +235,7 @@ def scan(root, extensions, min_score):
 # --------------------------------------------------------------------------
 
 def render_markdown(candidates, root, args):
+    dry_run = getattr(args, 'dry_run', False)
     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
     lines = [
         f"# pickaxe report",
@@ -234,13 +272,22 @@ def render_markdown(candidates, root, args):
         lines.append("")
 
         if c['commits'] > 0 and c['git_root']:
-            lines += [
-                f"**History worth preserving** ({c['commits']} commits):",
-                f"```bash",
-                git_filter_repo_cmd(c['git_root'], c['path']),
-                f"```",
-                "",
-            ]
+            if dry_run:
+                lines += [
+                    f"**Extraction pipeline** ({c['commits']} commits):",
+                    f"```bash",
+                    extraction_script(c['git_root'], c['path']),
+                    f"```",
+                    "",
+                ]
+            else:
+                lines += [
+                    f"**History worth preserving** ({c['commits']} commits):",
+                    f"```bash",
+                    git_filter_repo_cmd(c['git_root'], c['path']),
+                    f"```",
+                    "",
+                ]
         elif not c['git_root']:
             lines += [
                 f"_Not in any git repo — init fresh:_",
@@ -257,7 +304,7 @@ def render_markdown(candidates, root, args):
     return "\n".join(lines)
 
 
-def render_table(candidates, root):
+def render_table(candidates, root, dry_run=False):
     """Compact terminal table output."""
     print(f"\n{'SCORE':>5}  {'COMMITS':>7}  {'VERSION':>8}  {'PATH'}")
     print(f"{'-'*5}  {'-'*7}  {'-'*8}  {'-'*60}")
@@ -265,6 +312,15 @@ def render_table(candidates, root):
         ver = c['meta']['version'] or '—'
         print(f"{c['score']:>5}  {c['commits']:>7}  {ver:>8}  {c['rel']}")
     print(f"\n{len(candidates)} candidates found.")
+    if dry_run:
+        print()
+        for c in candidates:
+            if c['commits'] > 0 and c['git_root']:
+                print(f"{'='*60}")
+                print(f"# {c['rel']}  (score={c['score']}, commits={c['commits']})")
+                print(f"{'='*60}")
+                print(extraction_script(c['git_root'], c['path']))
+                print()
 
 
 # --------------------------------------------------------------------------
@@ -295,6 +351,10 @@ def main():
         '--all', '-a', action='store_true',
         help='Include all candidates regardless of score'
     )
+    parser.add_argument(
+        '--dry-run', '-d', action='store_true',
+        help='Emit complete copy-pasteable extraction pipeline per candidate'
+    )
     args = parser.parse_args()
 
     if args.all:
@@ -309,7 +369,7 @@ def main():
             f.write(md)
         print(f"[pickaxe] report written to {args.output}", file=sys.stderr)
     else:
-        render_table(candidates, os.path.abspath(args.root))
+        render_table(candidates, os.path.abspath(args.root), dry_run=args.dry_run)
 
 
 if __name__ == '__main__':
