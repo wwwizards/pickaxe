@@ -10,7 +10,7 @@ pickaxe is a **discovery and scoring** tool. It does not touch git or GitHub —
 
 **What it does:**
 
-1. Walks a directory tree (respecting a configurable skip-list)
+1. traverses a directory tree (respecting a configurable skip-list)
 2. Reads the first 60 lines of each script file (`.py`, `.ps1`, `.sh`, `.rb`)
 3. Extracts header metadata: `VERSION`, `CREATED`, `PURPOSE/ABSTRACT`, `LICENSE`, `SHEBANG`
 4. Calls `git log --follow --oneline` to count commits per file
@@ -174,12 +174,15 @@ Use this as the live execution sheet for development and handoff continuity.
 
 ### Track B — Repo hygiene and drift control
 
-- [ ] `pickaxe doctor` identifies repo state anomalies (missing `.git`, missing `origin`, stripped `.git/config`)
-- [ ] `pickaxe inventory` emits local repo map (path, remote, branch, health flags)
-- [ ] `pickaxe hydrate` can clone missing repos and restore missing remotes from a canonical manifest
-- [ ] `pickaxe drift` compares local inventory vs canonical GitHub set and reports mismatches
-- [ ] `pickaxe provision` applies baseline repo hygiene files (RFC-002 path)
-- [ ] `pickaxe report` writes timestamped remediation report (Markdown + JSON)
+Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
+
+- [ ] `pickaxe diagnose` — identifies repo state anomalies (missing `.git`, missing `origin`, stripped `.git/config`)
+- [ ] `pickaxe discover` — emits local repo map (path, remote, branch, health flags); default output `table`, `--format json` for piping
+- [ ] `pickaxe deliver dirs` — clone missing repos and restore missing remotes from a canonical manifest (`repos.manifest.json`)
+- [ ] `pickaxe discover drift` — compare local inventory vs canonical GitHub set, report mismatches (read-only)
+- [ ] `pickaxe deliver drift` — apply fixes from drift report (dry-run by default)
+- [ ] `pickaxe deliver docs` — applies baseline repo hygiene files (hook, `.editorconfig`, `.prettierrc`)
+- [ ] `pickaxe document report` — writes timestamped remediation report (Markdown + JSON)
 
 ### Track C — Context oracle
 

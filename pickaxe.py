@@ -12,8 +12,8 @@
 #     "You don't lose your tools — you just forget where you put them."
 #
 # CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
-# UPDATED: 26-0519 - BY: wwwizards <github.com/wwwizards> - add --dry-run pipeline output
-# VERSION: v0.1.1
+# UPDATED: 26-0526 - BY: wwwizards <github.com/wwwizards> - 5D command surface: diagnose + discover
+# VERSION: v0.2.0
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -31,6 +31,7 @@
 import os
 import re
 import sys
+import json
 import argparse
 import subprocess
 import datetime
@@ -91,6 +92,100 @@ def git_filter_repo_cmd(git_root, file_path):
         f"  # Clone first: git clone {git_root} /tmp/extracted-repo\n"
         f"  git -C /tmp/extracted-repo filter-repo --path '{rel}' --force"
     )
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE / DISCOVER  (5D phase 1 & 2)
+# --------------------------------------------------------------------------
+
+def _get_branch(path):
+    """Read current branch name from .git/HEAD. Returns None if unreadable."""
+    head_path = os.path.join(path, '.git', 'HEAD')
+    if not os.path.isfile(head_path):
+        return None
+    try:
+        content = open(head_path, encoding='utf-8').read().strip()
+        if content.startswith('ref: refs/heads/'):
+            return content[len('ref: refs/heads/'):]
+        return content[:8]  # detached HEAD — return short hash
+    except Exception:
+        return None
+
+
+def diagnose(path):
+    """
+    Inspect repo health at path (Diagnose phase — read-only).
+    Returns a dict with keys: path, has_git, has_origin, remote_url, flags.
+    Flags: 'ok' | 'missing_git' | 'missing_origin' | 'stripped_config'
+    Never mutates anything.
+    """
+    path = os.path.abspath(path)
+    result = {
+        'path': path,
+        'has_git': False,
+        'has_origin': False,
+        'remote_url': None,
+        'flags': [],
+    }
+    git_dir = os.path.join(path, '.git')
+    if not os.path.isdir(git_dir):
+        result['flags'].append('missing_git')
+        return result
+    result['has_git'] = True
+
+    config_path = os.path.join(git_dir, 'config')
+    if not os.path.isfile(config_path):
+        result['flags'].append('stripped_config')
+        return result
+
+    try:
+        content = open(config_path, encoding='utf-8').read()
+    except Exception:
+        result['flags'].append('stripped_config')
+        return result
+
+    if '[remote "origin"]' in content:
+        result['has_origin'] = True
+        url_match = re.search(r'url\s*=\s*(.+)', content)
+        if url_match:
+            result['remote_url'] = url_match.group(1).strip()
+    else:
+        result['flags'].append('missing_origin')
+
+    if not result['flags']:
+        result['flags'].append('ok')
+    return result
+
+
+def discover(root):
+    """
+    Walk root for git repo roots (Discover phase — read-only).
+    Returns a list of repo entry dicts:
+      {path, rel, remote, branch, flags, health_ok}
+    Never mutates anything.
+    """
+    root = os.path.abspath(root)
+    entries = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        # Prune dirs we never want to recurse into
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        # Check whether this dir is a git repo root
+        if os.path.isdir(os.path.join(dirpath, '.git')):
+            health = diagnose(dirpath)
+            rel = os.path.relpath(dirpath, root)
+            entries.append({
+                'path': dirpath,
+                'rel': rel,
+                'remote': health['remote_url'],
+                'branch': _get_branch(dirpath),
+                'flags': health['flags'],
+                'health_ok': health['flags'] == ['ok'],
+            })
+            # Remove .git from traversal but keep other subdirs
+            # so nested repos (e.g. pickaxe inside LogicWizards) are found
+            if '.git' in dirnames:
+                dirnames.remove('.git')
+    return entries
 
 
 def extraction_script(git_root, file_path):
@@ -324,45 +419,61 @@ def render_table(candidates, root, dry_run=False):
 
 
 # --------------------------------------------------------------------------
+# OUTPUT — discover / diagnose
+# --------------------------------------------------------------------------
+
+def render_discover_table(entries):
+    """Print a compact table of discovered repos."""
+    print(f"\n{'HEALTH':>7}  {'BRANCH':>10}  {'FLAGS':>20}  PATH")
+    print(f"{'-'*7}  {'-'*10}  {'-'*20}  {'-'*60}")
+    for e in entries:
+        health = 'ok' if e['health_ok'] else 'WARN'
+        branch = e['branch'] or '—'
+        flags  = ','.join(e['flags'])
+        print(f"{health:>7}  {branch:>10}  {flags:>20}  {e['rel']}")
+    print(f"\n{len(entries)} repo(s) found.")
+
+
+def render_diagnose_table(result):
+    """Print a single-repo diagnose result."""
+    status = 'ok' if 'ok' in result['flags'] else 'WARN'
+    print(f"\n[{status}] {result['path']}")
+    print(f"  has_git   : {result['has_git']}")
+    print(f"  has_origin: {result['has_origin']}")
+    print(f"  remote_url: {result['remote_url'] or '—'}")
+    print(f"  flags     : {', '.join(result['flags'])}")
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="pickaxe — mine tool-worthy scripts from compound mono-repos"
-    )
-    parser.add_argument(
-        'root', nargs='?', default='.',
-        help='Root directory to scan (default: current directory)'
-    )
-    parser.add_argument(
-        '--min-score', '-s', type=int, default=3,
-        help='Minimum score to include in report (default: 3)'
-    )
-    parser.add_argument(
-        '--extensions', '-e', nargs='+', default=DEFAULT_EXTENSIONS,
-        help=f'File extensions to scan (default: {DEFAULT_EXTENSIONS})'
-    )
-    parser.add_argument(
-        '--output', '-o', default=None,
-        help='Write Markdown report to this file (default: print table to stdout)'
-    )
-    parser.add_argument(
-        '--all', '-a', action='store_true',
-        help='Include all candidates regardless of score'
-    )
-    parser.add_argument(
-        '--dry-run', '-d', action='store_true',
-        help='Emit complete copy-pasteable extraction pipeline per candidate'
-    )
-    args = parser.parse_args()
+def _cmd_discover(args):
+    root = os.path.abspath(args.root or '.')
+    print(f"[pickaxe discover] scanning {root} ...", file=sys.stderr)
+    entries = discover(root)
+    if args.format == 'json':
+        print(json.dumps(entries, indent=2))
+    else:
+        render_discover_table(entries)
 
+
+def _cmd_diagnose(args):
+    path = os.path.abspath(args.path or '.') 
+    print(f"[pickaxe diagnose] {path}", file=sys.stderr)
+    result = diagnose(path)
+    if args.format == 'json':
+        print(json.dumps(result, indent=2))
+    else:
+        render_diagnose_table(result)
+
+
+def _cmd_scan(args):
+    """Legacy scan behaviour (Discover phase — extraction candidates)."""
     if args.all:
         args.min_score = 0
-
     print(f"[pickaxe] scanning {os.path.abspath(args.root)} ...", file=sys.stderr)
     candidates = scan(args.root, args.extensions, args.min_score)
-
     if args.output:
         md = render_markdown(candidates, os.path.abspath(args.root), args)
         with open(args.output, 'w') as f:
@@ -370,6 +481,50 @@ def main():
         print(f"[pickaxe] report written to {args.output}", file=sys.stderr)
     else:
         render_table(candidates, os.path.abspath(args.root), dry_run=args.dry_run)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="pickaxe — 5D repo health + extraction tool (wwwizards)"
+    )
+    sub = parser.add_subparsers(dest='command', metavar='command')
+
+    # --- discover ---
+    p_discover = sub.add_parser(
+        'discover', help='Emit local repo map (path, remote, branch, health flags)'
+    )
+    p_discover.add_argument('root', nargs='?', default='.', help='Root dir to walk')
+    p_discover.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_discover.set_defaults(func=_cmd_discover)
+
+    # --- diagnose ---
+    p_diagnose = sub.add_parser(
+        'diagnose', help='Inspect repo health (missing .git, origin, config)'
+    )
+    p_diagnose.add_argument('path', nargs='?', default='.', help='Repo path to inspect')
+    p_diagnose.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_diagnose.set_defaults(func=_cmd_diagnose)
+
+    # --- legacy positional scan (backward compat) ---
+    parser.add_argument(
+        'root', nargs='?', default=None,
+        help='Root dir to scan for extraction candidates (legacy; use "discover")'
+    )
+    parser.add_argument('--min-score', '-s', type=int, default=3)
+    parser.add_argument('--extensions', '-e', nargs='+', default=DEFAULT_EXTENSIONS)
+    parser.add_argument('--output', '-o', default=None)
+    parser.add_argument('--all', '-a', action='store_true')
+    parser.add_argument('--dry-run', '-d', action='store_true')
+
+    args = parser.parse_args()
+
+    if args.command:
+        args.func(args)
+    else:
+        # Legacy scan mode
+        if args.root is None:
+            args.root = '.'
+        _cmd_scan(args)
 
 
 if __name__ == '__main__':
