@@ -6,3 +6,10 @@ __pycache__/
 
 # pickaxe session data (workspace-specific, lives in the managed repo)
 .pickaxe/
+
+# macOS metadata garbage
+._*
+.DS_Store
+
+# autodoc build artifacts
+*.html
