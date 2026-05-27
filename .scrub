@@ -1,0 +1,11 @@
+# .scrub — identity scrub manifest
+# One pattern per line. Add old emails/handles as they surface when self-stealing
+# from old drives/repos. Used to audit files before committing.
+#
+# Quick scan:
+#   grep -rif .scrub .
+#   Get-ChildItem -Recurse | Select-String -Pattern (Get-Content .scrub | Where { $_ -notmatch '^#' })
+#
+# Future: pickaxe scan will check these automatically.
+
+jnegron9@fordham.edu
