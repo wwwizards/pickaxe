@@ -287,3 +287,100 @@ class TestDiscover:
         results = pickaxe.discover(parent)
         paths = [r["path"] for r in results]
         assert HERE in paths
+
+
+# --------------------------------------------------------------------------
+# SESSION LOGGING — v0.3.0  (--save flag)
+# --------------------------------------------------------------------------
+
+class TestSessionLogging:
+
+    def test_save_session_event_creates_file(self, tmp_path):
+        sessions_dir = str(tmp_path / ".pickaxe" / "SESSIONS")
+        saved = pickaxe._save_session_event(
+            "discover", str(tmp_path), {"repos_found": 1, "health_ok": 1, "flag_counts": {}}, sessions_dir
+        )
+        assert os.path.isfile(saved)
+
+    def test_save_session_event_is_valid_ndjson(self, tmp_path):
+        sessions_dir = str(tmp_path / ".pickaxe" / "SESSIONS")
+        pickaxe._save_session_event("discover", str(tmp_path), {"repos_found": 2}, sessions_dir)
+        files = list(os.scandir(sessions_dir))
+        assert len(files) == 1
+        lines = open(files[0].path, encoding="utf-8").read().strip().splitlines()
+        assert len(lines) == 1
+        event = json.loads(lines[0])
+        assert event["phase"] == "discover"
+        assert "ts" in event
+        assert "target" in event
+        assert "result" in event
+
+    def test_save_session_event_target_is_relative(self, tmp_path):
+        sessions_dir = str(tmp_path / ".pickaxe" / "SESSIONS")
+        pickaxe._save_session_event("discover", str(tmp_path), {}, sessions_dir)
+        filepath = list(os.scandir(sessions_dir))[0].path
+        event = json.loads(open(filepath, encoding="utf-8").readline())
+        # target must not be absolute (no drive letter or leading slash)
+        assert not os.path.isabs(event["target"])
+
+    def test_save_session_event_uses_forward_slashes(self, tmp_path):
+        sessions_dir = str(tmp_path / ".pickaxe" / "SESSIONS")
+        pickaxe._save_session_event("diagnose", str(tmp_path / "some" / "repo"), {}, sessions_dir)
+        filepath = list(os.scandir(sessions_dir))[0].path
+        event = json.loads(open(filepath, encoding="utf-8").readline())
+        assert "\\" not in event["target"]
+
+    def test_save_appends_multiple_events(self, tmp_path):
+        sessions_dir = str(tmp_path / ".pickaxe" / "SESSIONS")
+        for i in range(3):
+            pickaxe._save_session_event("discover", str(tmp_path), {"run": i}, sessions_dir)
+        filepath = list(os.scandir(sessions_dir))[0].path
+        lines = open(filepath, encoding="utf-8").read().strip().splitlines()
+        assert len(lines) == 3
+        for line in lines:
+            json.loads(line)  # each line must be valid JSON
+
+    def test_build_discover_summary_counts_flags(self, tmp_path):
+        entries = [
+            {"health_ok": True,  "flags": ["ok"]},
+            {"health_ok": False, "flags": ["missing_origin"]},
+            {"health_ok": False, "flags": ["missing_origin", "stripped_config"]},
+        ]
+        s = pickaxe._build_discover_summary(entries)
+        assert s["repos_found"] == 3
+        assert s["health_ok"] == 1
+        assert s["flag_counts"]["missing_origin"] == 2
+        assert s["flag_counts"]["stripped_config"] == 1
+
+    def test_build_diagnose_summary_keys(self, repo_with_origin):
+        result = pickaxe.diagnose(str(repo_with_origin))
+        s = pickaxe._build_diagnose_summary(result)
+        assert "has_git" in s
+        assert "has_origin" in s
+        assert "flags" in s
+
+    def test_cli_discover_save_creates_sessions_dir(self, tmp_path):
+        """CLI --save flag must create .pickaxe/SESSIONS/ and write an event."""
+        # Create a minimal git repo inside tmp_path so discover finds something
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        git_dir = repo / ".git"
+        git_dir.mkdir()
+        (git_dir / "HEAD").write_text("ref: refs/heads/main\n")
+        (git_dir / "config").write_text(
+            "[core]\n\trepositoryformatversion = 0\n"
+            "[remote \"origin\"]\n\turl = https://github.com/test/test.git\n"
+        )
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path), "--save"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0
+        sessions_dir = tmp_path / ".pickaxe" / "SESSIONS"
+        assert sessions_dir.is_dir(), "Sessions dir not created"
+        files = list(sessions_dir.iterdir())
+        assert len(files) == 1
+        event = json.loads(open(files[0], encoding="utf-8").readline())
+        assert event["phase"] == "discover"
+
