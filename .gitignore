@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# pickaxe session data (workspace-specific, lives in the managed repo)
+.pickaxe/
