@@ -12,8 +12,8 @@
 #     "You don't lose your tools — you just forget where you put them."
 #
 # CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
-# UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save flag: session event logging to .pickaxe/SESSIONS/
-# VERSION: v0.3.0
+# UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
+# VERSION: v0.3.1
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -446,6 +446,18 @@ def _build_diagnose_summary(result):
     }
 
 
+def _build_scan_summary(candidates, root):
+    """Summarise scan results into a compact session-log dict."""
+    from collections import Counter
+    score_dist = Counter(c['score'] for c in candidates)
+    return {
+        'candidates_found': len(candidates),
+        'score_distribution': dict(sorted(score_dist.items())),
+        'top_score': max((c['score'] for c in candidates), default=0),
+        'root': os.path.relpath(root, root),  # always '.' — sentinel for portability
+    }
+
+
 def _save_session_event(phase, target_abs, result_summary, sessions_dir):
     """
     Append a 5D event record (NDJSON) to .pickaxe/SESSIONS/YYMMDD-<topic>.json.
@@ -542,15 +554,34 @@ def _cmd_scan(args):
     """Legacy scan behaviour (Discover phase — extraction candidates)."""
     if args.all:
         args.min_score = 0
-    print(f"[pickaxe] scanning {os.path.abspath(args.root)} ...", file=sys.stderr)
+    root_abs = os.path.abspath(args.root)
+    print(f"[pickaxe] scanning {root_abs} ...", file=sys.stderr)
     candidates = scan(args.root, args.extensions, args.min_score)
-    if args.output:
-        md = render_markdown(candidates, os.path.abspath(args.root), args)
+    fmt = getattr(args, 'format', 'table')
+    if fmt == 'json':
+        # Emit JSON-serialisable subset (drop non-serialisable meta internals)
+        out = [{
+            'rel':     c['rel'],
+            'score':   c['score'],
+            'commits': c['commits'],
+            'version': c['meta'].get('version'),
+            'created': c['meta'].get('created'),
+            'author':  c['meta'].get('author'),
+            'license': c['meta'].get('license'),
+            'purpose': c['meta'].get('purpose'),
+        } for c in candidates]
+        print(json.dumps(out, indent=2))
+    elif args.output:
+        md = render_markdown(candidates, root_abs, args)
         with open(args.output, 'w') as f:
             f.write(md)
         print(f"[pickaxe] report written to {args.output}", file=sys.stderr)
     else:
-        render_table(candidates, os.path.abspath(args.root), dry_run=args.dry_run)
+        render_table(candidates, root_abs, dry_run=args.dry_run)
+    if args.save:
+        sessions_dir = os.path.join(root_abs, '.pickaxe', 'SESSIONS')
+        saved = _save_session_event('scan', root_abs, _build_scan_summary(candidates, root_abs), sessions_dir)
+        print(f"[pickaxe] session event saved → {saved}", file=sys.stderr)
 
 
 def main():
@@ -579,26 +610,27 @@ def main():
                              help='Append session event to {path}/.pickaxe/SESSIONS/')
     p_diagnose.set_defaults(func=_cmd_diagnose)
 
-    # --- legacy positional scan (backward compat) ---
-    parser.add_argument(
-        'root', nargs='?', default=None,
-        help='Root dir to scan for extraction candidates (legacy; use "discover")'
+    # --- scan ---
+    p_scan = sub.add_parser(
+        'scan', help='Score files as extraction candidates (version, commits, headers)'
     )
-    parser.add_argument('--min-score', '-s', type=int, default=3)
-    parser.add_argument('--extensions', '-e', nargs='+', default=DEFAULT_EXTENSIONS)
-    parser.add_argument('--output', '-o', default=None)
-    parser.add_argument('--all', '-a', action='store_true')
-    parser.add_argument('--dry-run', '-d', action='store_true')
+    p_scan.add_argument('root', nargs='?', default='.', help='Root dir to scan')
+    p_scan.add_argument('--min-score', '-s', type=int, default=3)
+    p_scan.add_argument('--extensions', '-e', nargs='+', default=DEFAULT_EXTENSIONS)
+    p_scan.add_argument('--output', '-o', default=None)
+    p_scan.add_argument('--all', '-a', action='store_true')
+    p_scan.add_argument('--dry-run', '-d', action='store_true')
+    p_scan.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_scan.add_argument('--save', action='store_true',
+                         help='Append session event to {root}/.pickaxe/SESSIONS/')
+    p_scan.set_defaults(func=_cmd_scan)
 
     args = parser.parse_args()
 
     if args.command:
         args.func(args)
     else:
-        # Legacy scan mode
-        if args.root is None:
-            args.root = '.'
-        _cmd_scan(args)
+        parser.print_help()
 
 
 if __name__ == '__main__':

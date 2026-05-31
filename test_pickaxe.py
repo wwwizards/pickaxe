@@ -384,3 +384,40 @@ class TestSessionLogging:
         event = json.loads(open(files[0], encoding="utf-8").readline())
         assert event["phase"] == "discover"
 
+    def test_build_scan_summary_keys(self, tmp_path):
+        """_build_scan_summary must return required trajectory keys."""
+        # Create minimal candidate list with two different scores
+        candidates = [
+            {"score": 5, "rel": "a.py"},
+            {"score": 5, "rel": "b.py"},
+            {"score": 3, "rel": "c.ps1"},
+        ]
+        s = pickaxe._build_scan_summary(candidates, str(tmp_path))
+        assert s["candidates_found"] == 3
+        assert s["top_score"] == 5
+        assert "score_distribution" in s
+        assert s["score_distribution"][5] == 2
+        assert s["score_distribution"][3] == 1
+
+    def test_build_scan_summary_empty(self, tmp_path):
+        """_build_scan_summary on empty candidate list must not raise."""
+        s = pickaxe._build_scan_summary([], str(tmp_path))
+        assert s["candidates_found"] == 0
+        assert s["top_score"] == 0
+
+    def test_cli_scan_save_creates_sessions_entry(self, tmp_path):
+        """CLI `scan --save` must create a session event file under .pickaxe/SESSIONS/."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "scan", str(tmp_path), "--save"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"scan --save failed: {result.stderr}"
+        sessions_dir = tmp_path / ".pickaxe" / "SESSIONS"
+        assert sessions_dir.is_dir(), "Sessions dir not created by scan --save"
+        files = list(sessions_dir.iterdir())
+        assert len(files) == 1
+        event = json.loads(open(files[0], encoding="utf-8").readline())
+        assert event["phase"] == "scan"
+        assert event["result"]["candidates_found"] == 0  # empty dir → 0 candidates
+
