@@ -1,94 +1,137 @@
-<!-- BEGIN AutoDoc-head2md AutoGen -->
-<div style="float:left; width:100%; padding:5px">
+# etl-tools
 
-# SCRIPT: __init__.py
+JSON → table / CSV / JSON formatter. Part of the [pickaxe](../README.md) monorepo.
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | initializer - part of the converters package, to facilitate       exposing methods when imported into other scripts so that we can       easily access them directly |
-| LICENSE | COPYLEFT - GNU Lesser General Public License (LGPL) |
-| CREATED | 24-1005 BY: github.com/wwwizards |
-| VERSION | v0.3.1 (module ready) |
+Consumes structured JSON data — from a file or stdin — and renders it as an
+aligned terminal table, CSV, or normalized JSON. The formatter half of the
+pickaxe pipeline: any tool that emits JSON can pipe into this.
 
-*Generated on 2024-10-05 03:34:40 EDT*
-</div>
+---
 
+## Requirements
 
-<!-- BEGIN AutoDoc-head2md AutoGen -->
-<div style="float:left; width:100%; padding:5px">
+Python 3.7+, stdlib only. No pip installs needed.
 
-# MODULE: convert_from_json.py
+---
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | A module for converting JSON data into various formats: JSON, CSV, or     a table. It supports filtering data using user-defined queries and     optional verbosity for debugging or condition evaluation. |
-| USAGE | - As a command-line tool:       python fromJSON.py -f [path/to/json] -o [json|csv|table] -q [query] [-v | -vv]      - As an imported module:       from converters.fromJSON import from_json       from_json(file_path, format="table", query="field", verbose=0) |
-| ARGUMENTS | -f, --file      : Path to the input JSON file.     -o, --output    : Output format (default: json). Options: json, csv, table.     -q, --query     : Wildcard query string for filtering data.     -v              : Verbose mode; prints condition results for each item.     -vv             : Extra verbose mode; prints detailed evaluation logs. |
-| LICENSE | COPYLEFT - GNU Lesser General Public License (LGPL) |
-| CREATED | 24-0905 BY: github.com/wwwizards |
-| UPDATED | 24-1005 BY: github.com/wwwizards |
-| VERSION | v0.3.1 (module ready) |
+## Quick start
 
-## FUNCTION: print_json()
+```powershell
+# From a file
+python etl-tools\convert_from_json.py -f data.json -o table
 
-| Key | Value |
-| --- | ----- |
-| DESCRIPTION | prints data in JSON format |
+# From stdin (pipe from any JSON producer)
+python producer.py | python etl-tools\convert_from_json.py -f - -o table
 
-## FUNCTION: print_csv(data, index_first=True)
+# Select and order columns
+python etl-tools\convert_from_json.py -f data.json -o table -c "name,status,region"
 
-| Key | Value |
-| --- | ----- |
-| DESCRIPTION | prints data in CSV format |
+# Filter rows, then render as CSV
+python etl-tools\convert_from_json.py -f data.json -o csv -q "status = active"
+```
 
-## FUNCTION: print_table(data, index_first=True)
+---
 
-| Key | Value |
-| --- | ----- |
-| DESCRIPTION | prints data in an aligned table format |
+## CLI reference
 
-## FUNCTION: filter_data(data, query, verbose=False, extra_verbose=False)
+```
+convert_from_json.py -f FILE -o FORMAT [-q QUERY] [-c COLUMNS] [-v | -vv]
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | to filter data based on a query string |
+  -f, --file      Path to JSON file, or - for stdin
+  -o, --output    Output format: table | csv | json  (default: json)
+  -q, --query     Filter expression (see Query syntax below)
+  -c, --columns   Comma-separated field names to display, in order
+  -v              Verbose: print condition results per row
+  -vv             Extra verbose: print full query evaluation trace
+```
 
-## FUNCTION: apply_conditions(item, conditions, verbose=False, extra_verbose=False)
+---
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | to evaluate conditions on data entries |
+## Output formats
 
-## FUNCTION: evaluate_expression(item, tokens, verbose=False, extra_verbose=False)
+**table** — aligned box-drawing table, best for terminal display:
+```
+┌──────────────────────────────────────────┐
+│ label        │ cpu_util_pct │ gpu0_util_pct │
+├──────────────────────────────────────────┤
+│ baseline     │ 19.1         │ 0             │
+└──────────────────────────────────────────┘
+```
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | to evaluate a logical expression recursively |
+**csv** — RFC 4180, Unix `\n` line endings on all platforms (safe to pipe to other tools):
+```
+label,cpu_util_pct,gpu0_util_pct
+baseline,19.1,0
+```
 
-## FUNCTION: build_condition_function(condition)
+**json** — pretty-printed, indent=4.
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | to parse and build a condition function |
+---
 
-## FUNCTION: parse_query(query)
+## Query syntax
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | to parse a query into evaluable conditions |
+Case-sensitive. Wildcard matching via `fnmatch` (`*` and `?`).
 
-## FUNCTION: from_json(file_path, output="json", query=None, verbose=0)
+```
+-q "FIELD = value"           exact match
+-q "FIELD != value"          not equal
+-q "FIELD = 10.*"            glob match
+-q "status = active and region = eastus"
+-q "type = bug or type = incident"
+```
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | exposed function to provide the same functionality main(), but       primarily to used when included in other scripts as a module |
-| USAGE | converters.from_json(file="path/to/file.json", output="table", query="FIELD = value", verbose=1) |
+---
 
-## FUNCTION: main()
+## Column selection
 
-| Key | Value |
-| --- | ----- |
-| PURPOSE | Main function to handle argument parsing and call appropriate functions |
+`-c` controls which fields appear and in what order. Fields not present in the
+data are silently skipped. Without `-c`, all fields are shown in sorted order.
 
-*Generated on 2024-10-05 03:34:40 EDT*
-</div>
+```powershell
+-c "timestamp,label,cpu_util_pct,gpu0_util_pct,gpu0_temp_c"
+```
+
+---
+
+## Pipeline usage with sys-tools
+
+sys-tools `sys-probe.py` emits JSON that pipes directly into this formatter:
+
+```powershell
+# Real-time snapshot as table
+.venv\Scripts\python.exe sys-tools\sys-probe.py --label "post-tier1" --no-intel `
+  | .venv\Scripts\python.exe etl-tools\convert_from_json.py -f - -o table `
+  -c "timestamp,label,cpu_util_pct,gpu0_util_pct,gpu0_vram_used_mb,gpu0_temp_c,gpu0_pstate"
+
+# Accumulated probes file as table
+.venv\Scripts\python.exe etl-tools\convert_from_json.py `
+  -f .AI-TRAINING\probes.json -o table `
+  -c "timestamp,label,cpu_util_pct,gpu0_util_pct,gpu0_temp_c,gpu0_pstate"
+```
+
+---
+
+## Module usage
+
+```python
+from etl_tools.convert_from_json import from_json, filter_data, print_table
+
+# Render a file
+from_json("data.json", output="table", columns="name,status,region")
+
+# Filter then render in-memory data
+filtered = filter_data(data, query="status = active")
+print_table(filtered, columns=["name", "status"])
+```
+
+---
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `convert_from_json.py` | Main tool — v0.4.2 |
+| `__init__.py` | Package init for module import |
+| `.HANDOFF/DESIGN.md` | Architecture and pipe contract |
+| `.HANDOFF/STATE.md` | Current version, what shipped, open items |
+| `.HANDOFF/ROADMAP.md` | Planned: numeric filters, sort, markdown output, diff mode |
