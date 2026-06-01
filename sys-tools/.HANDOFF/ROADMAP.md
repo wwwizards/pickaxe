@@ -67,6 +67,41 @@ GPU-0 utilization climb in real time rather than running discrete probes.
 
 ---
 
+## v0.5.0 — git-health (FUTURE — born from FAIL #26)
+
+**Goal:** Detect and fix git repo hygiene issues in a workspace — specifically the
+unregistered-gitlink anti-pattern that bites every new clone and CI run.
+
+```
+python git-health.py <repo-root> [--fix] [--output report.md]
+```
+
+**Core check — unregistered gitlinks:**
+- Walk `git ls-files --stage` output looking for mode `160000` entries
+- For each, check whether a matching `[submodule]` block exists in `.gitmodules`
+- Report mismatches as `UNREGISTERED` findings with the inferred remote URL
+  (reads from `.git/config` or the nested repo's `git remote -v`)
+- `--fix`: runs `git config --file .gitmodules ...` + `git config --local ...` for each
+  finding and stages `.gitmodules`
+
+**Additional checks (stretch):**
+- Submodule pointer drift: HEAD in parent != HEAD in nested repo
+- Nested `.git` folders that are NOT tracked as gitlinks at all (forgotten repos)
+- `.gitmodules` entries with no corresponding path on disk (stale/removed submodules)
+
+**Origin:** FAIL #26 in `.HANDOFF/LIGHTBULB-LOG.md` — 3 repos (ai-labs, psst, psstel)
+were tracked as gitlinks for months with no `.gitmodules` entry. Every `git submodule
+status` threw a fatal. Fixed manually in ~30 min on 2026-06-01; should have been a
+one-command tool.
+
+**Scope:**
+- [ ] `git-health.py` — scan + report unregistered gitlinks
+- [ ] `--fix` mode — auto-register with inferred URL, stage `.gitmodules`
+- [ ] Tests: fixture repo with known gitlink states
+- [ ] README entry (git-tools section)
+
+---
+
 ## v0.4.0 — sys-report (FUTURE)
 
 **Goal:** Generate a markdown summary of a probes session with embedded tables.
