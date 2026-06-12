@@ -208,8 +208,11 @@ Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 | v0.1 *(current)* | Discovery | Score + suggest |
 | v0.2 | Extraction | `--execute`, subdir mode, `.pickaxe/` chain-of-custody, AI context detection, full pipeline dry-run output |
 | v0.3 | Clustering | Cluster detection, shared-history grouping |
-| v0.4 | Automation | `--format json`, `--since`, GitHub Actions workflow |
+| v0.4 | Workspace | `pickaxe init <slug>`, `pickaxe workspace init`, `pickaxe workspace split` — cascade-aware scaffold for HOBOTS `.PROTOCOL/` + `AGENTS.md` + `DESIGN.md` + `SPEC.md` inheritance; nested monorepo support; `SPLIT-FROM:`/`SPLIT-TO:` lineage in STATE.md |
+| v0.5 | Automation | `--format json`, `--since`, GitHub Actions workflow |
 | v1.0 | Catalog | Multi-repo index, persistent state, query interface |
+
+**v0.4 design reference:** `wwwizards/ai-labs` `.HANDOFF/DESIGN.md` D-10, `.HANDOFF/FEATURE.md` F-pickaxe-workspace, `.PROTOCOL/README.md` § Inheritance Scope.
 
 ---
 
