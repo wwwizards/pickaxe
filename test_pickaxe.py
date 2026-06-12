@@ -51,6 +51,34 @@ def _make_repo(parent, name, origin_url=None):
     return repo
 
 
+def _make_submodule_repo(parent, name, origin_url=None):
+    """
+    Create a minimal fake submodule worktree under parent/name.
+    The .git entry is a gitlink file (not a directory), mirroring what
+    `git submodule add` produces.  The real git store lives at
+    parent/.git/modules/<name> so that _resolve_git_dir can traverse it.
+    """
+    # Real git store (simulates .git/modules/<name> inside the parent repo)
+    git_modules_dir = parent / ".git" / "modules" / name
+    git_modules_dir.mkdir(parents=True)
+    config = "[core]\n\trepositoryformatversion = 0\n"
+    if origin_url:
+        config += (
+            '[remote "origin"]\n'
+            f"\turl = {origin_url}\n"
+            "\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
+        )
+    (git_modules_dir / "config").write_text(config)
+    (git_modules_dir / "HEAD").write_text("ref: refs/heads/main\n")
+
+    # Submodule worktree — .git is a gitlink file
+    workdir = parent / name
+    workdir.mkdir()
+    rel_gitdir = os.path.relpath(str(git_modules_dir), str(workdir))
+    (workdir / ".git").write_text(f"gitdir: {rel_gitdir}\n")
+    return workdir
+
+
 @pytest.fixture
 def repo_with_origin(tmp_path):
     return _make_repo(
@@ -219,6 +247,35 @@ class TestDiagnose:
         after = set(os.listdir(str(repo_no_origin)))
         assert before == after
 
+    # --- gitlink / submodule ---
+
+    def test_diagnose_gitlink_has_git_true(self, tmp_path):
+        """A submodule worktree (.git as gitlink file) must report has_git=True."""
+        sub = _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        r = pickaxe.diagnose(str(sub))
+        assert r["has_git"] is True
+        assert "missing_git" not in r["flags"]
+
+    def test_diagnose_gitlink_flags_submodule(self, tmp_path):
+        """A gitlink repo must carry the 'submodule' flag."""
+        sub = _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        r = pickaxe.diagnose(str(sub))
+        assert "submodule" in r["flags"]
+
+    def test_diagnose_gitlink_resolves_origin(self, tmp_path):
+        """diagnose() must read origin URL from the resolved gitdir, not the gitlink file."""
+        sub = _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        r = pickaxe.diagnose(str(sub))
+        assert r["has_origin"] is True
+        assert r["remote_url"] == "https://github.com/test/my-sub.git"
+
+    def test_diagnose_gitlink_no_origin(self, tmp_path):
+        """Gitlink repo without an origin remote must flag missing_origin."""
+        sub = _make_submodule_repo(tmp_path, "my-sub")  # no origin_url
+        r = pickaxe.diagnose(str(sub))
+        assert r["has_git"] is True
+        assert "missing_origin" in r["flags"]
+
 
 # --------------------------------------------------------------------------
 # DISCOVER — local repo map  (v0.2 — failing until implemented)
@@ -287,6 +344,29 @@ class TestDiscover:
         results = pickaxe.discover(parent)
         paths = [r["path"] for r in results]
         assert HERE in paths
+
+    # --- gitlink / submodule ---
+
+    def test_discover_finds_gitlink_submodule(self, tmp_path):
+        """discover() must find repos where .git is a gitlink file (submodules)."""
+        _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        results = pickaxe.discover(str(tmp_path))
+        rels = [r["rel"] for r in results]
+        assert "my-sub" in rels
+
+    def test_discover_gitlink_entry_flagged_submodule(self, tmp_path):
+        """Gitlink repos surfaced by discover() must carry the 'submodule' flag."""
+        _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        results = pickaxe.discover(str(tmp_path))
+        sub_entry = next(r for r in results if r["rel"] == "my-sub")
+        assert "submodule" in sub_entry["flags"]
+
+    def test_discover_gitlink_health_ok_with_origin(self, tmp_path):
+        """A gitlink repo with a valid origin must be reported as health_ok."""
+        _make_submodule_repo(tmp_path, "my-sub", "https://github.com/test/my-sub.git")
+        results = pickaxe.discover(str(tmp_path))
+        sub_entry = next(r for r in results if r["rel"] == "my-sub")
+        assert sub_entry["health_ok"] is True
 
 
 # --------------------------------------------------------------------------
