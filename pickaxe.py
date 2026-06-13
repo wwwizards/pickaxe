@@ -13,7 +13,8 @@
 #
 # CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
 # UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
-# VERSION: v0.3.1
+# UPDATED: 26-0603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
+# VERSION: v0.3.2
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -60,10 +61,11 @@ RE_LICENSE  = re.compile(r'LICENSE\s*[:\-]\s*(.+)', re.IGNORECASE)
 # --------------------------------------------------------------------------
 
 def find_git_root(path):
-    """Walk up from path until we find a .git directory. Returns None if not found."""
+    """Walk up from path until we find a .git dir or gitlink file. Returns None if not found."""
     current = os.path.abspath(path)
     while True:
-        if os.path.isdir(os.path.join(current, '.git')):
+        git_marker = os.path.join(current, '.git')
+        if os.path.isdir(git_marker) or os.path.isfile(git_marker):
             return current
         parent = os.path.dirname(current)
         if parent == current:
@@ -98,9 +100,38 @@ def git_filter_repo_cmd(git_root, file_path):
 # DIAGNOSE / DISCOVER  (5D phase 1 & 2)
 # --------------------------------------------------------------------------
 
+def _resolve_git_dir(path):
+    """
+    Return the actual git directory for a repo rooted at path.
+
+    Handles two cases:
+      - Normal repo:          path/.git  is a directory  → return it as-is
+      - Submodule worktree:   path/.git  is a gitlink file
+                              (content: "gitdir: <rel-or-abs-path>")
+                              → resolve and return the real store dir
+
+    Returns None if no .git marker exists at all.
+    """
+    git_marker = os.path.join(path, '.git')
+    if os.path.isdir(git_marker):
+        return git_marker
+    if os.path.isfile(git_marker):
+        try:
+            line = open(git_marker, encoding='utf-8').read().strip()
+            if line.startswith('gitdir:'):
+                rel = line[len('gitdir:'):].strip()
+                return os.path.normpath(os.path.join(path, rel))
+        except Exception:
+            pass
+    return None
+
+
 def _get_branch(path):
     """Read current branch name from .git/HEAD. Returns None if unreadable."""
-    head_path = os.path.join(path, '.git', 'HEAD')
+    git_dir = _resolve_git_dir(path)
+    if git_dir is None:
+        return None
+    head_path = os.path.join(git_dir, 'HEAD')
     if not os.path.isfile(head_path):
         return None
     try:
@@ -116,7 +147,10 @@ def diagnose(path):
     """
     Inspect repo health at path (Diagnose phase — read-only).
     Returns a dict with keys: path, has_git, has_origin, remote_url, flags.
-    Flags: 'ok' | 'missing_git' | 'missing_origin' | 'stripped_config'
+    Flags: 'ok' | 'submodule' | 'missing_git' | 'missing_origin' | 'stripped_config'
+
+    Handles both normal repos (.git is a directory) and submodule worktrees
+    (.git is a gitlink file like "gitdir: ../../../../.git/modules/foo").
     Never mutates anything.
     """
     path = os.path.abspath(path)
@@ -127,11 +161,18 @@ def diagnose(path):
         'remote_url': None,
         'flags': [],
     }
-    git_dir = os.path.join(path, '.git')
-    if not os.path.isdir(git_dir):
+
+    git_marker = os.path.join(path, '.git')
+    is_submodule = os.path.isfile(git_marker)  # gitlink file = submodule worktree
+    git_dir = _resolve_git_dir(path)
+
+    if git_dir is None:
         result['flags'].append('missing_git')
         return result
+
     result['has_git'] = True
+    if is_submodule:
+        result['flags'].append('submodule')
 
     config_path = os.path.join(git_dir, 'config')
     if not os.path.isfile(config_path):
@@ -169,8 +210,9 @@ def discover(root):
     for dirpath, dirnames, _filenames in os.walk(root):
         # Prune dirs we never want to recurse into
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        # Check whether this dir is a git repo root
-        if os.path.isdir(os.path.join(dirpath, '.git')):
+        # Check whether this dir is a git repo root (dir = normal, file = submodule gitlink)
+        git_marker = os.path.join(dirpath, '.git')
+        if os.path.isdir(git_marker) or os.path.isfile(git_marker):
             health = diagnose(dirpath)
             rel = os.path.relpath(dirpath, root)
             entries.append({
@@ -179,7 +221,8 @@ def discover(root):
                 'remote': health['remote_url'],
                 'branch': _get_branch(dirpath),
                 'flags': health['flags'],
-                'health_ok': health['flags'] == ['ok'],
+                # healthy = has git + has origin; 'submodule' flag is informational, not a failure
+                'health_ok': health['has_git'] and health['has_origin'],
             })
             # Remove .git from traversal but keep other subdirs
             # so nested repos (e.g. pickaxe inside LogicWizards) are found

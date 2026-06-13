@@ -174,6 +174,38 @@ Every CLI invocation should optionally emit a structured session event to `.pick
 
 **Do not bolt this on later.** The log schema must be designed before v0.2 execution mode ships.
 
+---
+
+## D-08: `pickaxe workspace split` is the peer-node bootstrapping primitive (260612)
+
+`federation/F5` (Federated Peer Nodes) needs a mechanism for creating a peer node from an existing workspace subtree. `workspace split` with `SPLIT-FROM:`/`SPLIT-TO:` lineage (D-06) is exactly that primitive. A subtree becomes a peer node by splitting out, receiving its own Layer-2 scaffold via `workspace init`, and gaining its own `.AI-TRAINING/` loop.
+
+**Cross-reference:** `wwwizards/ai-labs` `federation/FEATURES/F5-federated-peer-nodes.md`.
+
+---
+
+## D-09: Layer numbering aligns with federation/F2 (260612)
+
+Federation FEATURE.md defines: L0=ai-labs SoT, L1=published defaults, L2=workspace root, L3..N=per-dir overrides. `pickaxe workspace init` operates at **L2** (workspace root scaffold), not L0. Prior references to "Layer 0" in pickaxe context meant L2 in federation terms. Use federation numbering going forward to avoid confusion when docs are read together.
+
+---
+
+## D-10: F2 inheritance conflict resolution — tree-depth wins, `--force` to override (260612)
+
+`federation/F2` open design question: when two `requires:` parents disagree, last-wins by tree depth or explicit priority? Answer: **tree depth wins** (child overrides parent), and `--force` is required to overwrite any customized anchor file. This is consistent with nested `.git/config` semantics and with `workspace init`'s existing "never silently clobber" behavior. Closes the F2 open question.
+
+---
+
+## D-11: `check-headers.py` is the F4 pre-gate candidate; it already exists (260612)
+
+`federation/F4` (Knowledge Classification) needs an artifact-level enforcement gate. `wwwizards/ai-labs/experiments/autodocs/check-headers.py` v0.4.260611 is the prototype — all flags tested green. Wire it as a pre-commit hook in pickaxe to satisfy `F-pickaxe-workspace` acceptance criteria item 6 ("all generated files pass the validator on first run"). The `pyst autodoc headers` integration (MVx-260611) is a future upgrade, not a blocker.
+
+---
+
+## D-12: T0 emit on every workspace init/split (260612)
+
+Every `pickaxe workspace init` and `pickaxe workspace split` invocation must write a structured record into the target workspace's `.AI-TRAINING/` directory under the F6 dotted namespace. This makes every scaffold/split a traceable provenance event — consistent with D-07 (session log as training data) and D-06 (lineage in STATE.md). The F6 namespace format: `LIGHTBULB-LOG.<stratum>.<org>.<project>.<target>.<verb>.md`.
+
 
 ### Layer 1: Discovery
 

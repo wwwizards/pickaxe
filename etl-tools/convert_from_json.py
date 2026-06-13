@@ -24,8 +24,8 @@
 #
 # LICENSE: COPYLEFT - GNU Lesser General Public License (LGPL)
 # CREATED: 24-0905 BY: github.com/wwwizards
-# UPDATED: 26-0527 BY: github.com/wwwizards
-# VERSION: v0.4.0 (stdin support, --columns flag, list-cell flattening)
+# UPDATED: 26-0601 BY: github.com/wwwizards
+# VERSION: v0.4.2 (cross-platform CSV line endings via stdout.reconfigure)
 # --------------------------------------------------------------------------
 
 import json 
@@ -66,10 +66,19 @@ def print_csv(data, index_first=True, columns=None):
             fieldnames.remove('index')
             fieldnames = ['index'] + fieldnames
 
-    writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, extrasaction='ignore', delimiter=',')
-    writer.writeheader()
-    for row in data:
-        writer.writerow({k: _cell(row.get(k, '')) for k in fieldnames})
+    # Normalize to \n on all platforms (dos2unix equivalent).
+    # reconfigure() is Python 3.7+ stdlib — no wrapper, no extra imports.
+    _prev_nl = getattr(sys.stdout, 'newlines', None)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(newline='\n')
+    try:
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames, extrasaction='ignore', delimiter=',')
+        writer.writeheader()
+        for row in data:
+            writer.writerow({k: _cell(row.get(k, '')) for k in fieldnames})
+    finally:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(newline=None)  # restore platform default
 
 # --------------------------------------------------------------------------
 # FUNCTION: print_table(data, index_first=True, columns=None) - prints data in an aligned table format
