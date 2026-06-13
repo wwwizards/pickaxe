@@ -1,0 +1,28 @@
+feat(roadmap): Track D Collaborate + MQL persona delegation
+
+## What changed
+
+ROADMAP.md
+  - Track D (Collaborate) — new track, commands:
+      pickaxe fetch  → query remote tags → write
+        remote.version to YAML manifest
+      pickaxe pull <name>  → git pull sub + pointer
+        bump + AGENTS.md read-order boot
+      pickaxe push <dotted-name>  → who/what/where/
+        when/how chain: STATE.md write → stage → commit
+        → push sub → bump parent → push parent
+      pickaxe status / log / <verb>  → passthrough
+  - MQL — Manifest Query Language section:
+      Syntax: pickaxe <PERSONA> <SAK-VERB> <selector>
+              [as <format>]
+      Example: pickaxe MATT seek *.remote.version as json
+      Field selectors: * (top-level), ** (all nodes),
+        [key=value] filter predicate, . accessor
+      HOBOTS SAK verbs: seek | ask | knock
+      Persona routing: MATT (delivery), SOL (research),
+        TOTO (risk watchdog)
+  - Version plan rows: v0.6 Collaborate, v0.7 Collaborate+,
+    v0.8 MQL+Fetch
+  - Footer date: Track D + MQL added 26-0613
+
+## Session: 260613 by Claude(Sonnet4.6)::Copilot::ai-labs.SOLOMON
