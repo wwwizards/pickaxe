@@ -176,8 +176,9 @@ Use this as the live execution sheet for development and handoff continuity.
 
 Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 
-- [ ] `pickaxe diagnose` — identifies repo state anomalies (missing `.git`, missing `origin`, stripped `.git/config`)
-- [ ] `pickaxe discover` — emits local repo map (path, remote, branch, health flags); default output `table`, `--format json` for piping
+- [x] `pickaxe diagnose` — identifies repo state anomalies (missing `.git`, missing `origin`, stripped `.git/config`)
+- [x] `pickaxe discover` — emits local repo map (path, remote, branch, health flags); default output `table`, `--format json` for piping
+- [x] `pickaxe discover commit-trends` — weekly (or daily/monthly) commit cadence for any repo; marathon detection (>2 commits/week by default, configurable); `--from`/`--to` date range; `--by week|day|month`; `--repo <path>` (defaults to cwd git root, works cross-repo including external monorepos); outputs table with week label, count, marathon flag; US holiday annotation opt-in (`--holidays us`)
 - [ ] `pickaxe deliver dirs` — clone missing repos and restore missing remotes from a canonical manifest (`repos.manifest.json`)
 - [ ] `pickaxe discover drift` — compare local inventory vs canonical GitHub set, report mismatches (read-only)
 - [ ] `pickaxe deliver drift` — apply fixes from drift report (dry-run by default)

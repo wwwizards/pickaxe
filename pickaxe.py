@@ -14,7 +14,8 @@
 # CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
 # UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
 # UPDATED: 26-0603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
-# VERSION: v0.3.2
+# UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - commit_trends (discover commit-trends; --by week|day|month; --from/--to; --marathon-threshold; --holidays)
+# VERSION: v0.3.3
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -536,6 +537,200 @@ def _save_session_event(phase, target_abs, result_summary, sessions_dir):
 
 
 # --------------------------------------------------------------------------
+# COMMIT TRENDS  (discover commit-trends)
+# --------------------------------------------------------------------------
+
+DISCOVER_NOUNS = {'commit-trends', 'drift'}
+
+
+def commit_trends(repo_path, by='week', from_date=None, to_date=None):
+    """
+    Return commit cadence data for a git repo.
+
+    Parameters
+    ----------
+    repo_path  : str   Path to any directory inside (or at root of) the repo.
+    by         : str   Granularity: 'week' | 'day' | 'month'
+    from_date  : str   ISO date string 'YYYY-MM-DD' (inclusive lower bound) or None
+    to_date    : str   ISO date string 'YYYY-MM-DD' (inclusive upper bound) or None
+
+    Returns
+    -------
+    list of {'period': str, 'count': int}
+    Sorted chronologically. Empty list if repo has no commits or path is not a repo.
+    """
+    from collections import Counter
+
+    date_fmt = {
+        'week':  '%G-W%V',   # ISO week: 2026-W24
+        'day':   '%Y-%m-%d', # 2026-06-14
+        'month': '%Y-%m',    # 2026-06
+    }.get(by, '%G-W%V')
+
+    repo_path = os.path.abspath(repo_path)
+    git_root = find_git_root(repo_path)
+    if git_root is None:
+        return []
+
+    cmd = [
+        'git', '-C', git_root,
+        'log',
+        f'--format=%ad',
+        f'--date=format:{date_fmt}',
+    ]
+    if from_date:
+        cmd += [f'--after={from_date}']
+    if to_date:
+        cmd += [f'--before={to_date}']
+
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
+    except subprocess.CalledProcessError:
+        return []
+
+    if not output:
+        return []
+
+    counts = Counter(line.strip() for line in output.splitlines() if line.strip())
+    periods = sorted(counts.keys())
+    return [{'period': p, 'count': counts[p]} for p in periods]
+
+
+def _load_holidays(locale, by, trends):
+    """
+    Return a dict mapping period string → comma-separated holiday names.
+    Requires the `holidays` package (pip install holidays). Silently returns
+    {} if the package is not installed or locale is unsupported.
+    """
+    try:
+        import holidays as hol_lib
+    except ImportError:
+        return {}
+
+    if not trends:
+        return {}
+
+    # Derive year range from the trends data
+    years = set()
+    for row in trends:
+        period = row['period']
+        try:
+            if by == 'week':
+                # e.g. '2026-W24' → parse to a date to get the year
+                year = int(period.split('-W')[0])
+                years.add(year)
+            elif by == 'month':
+                years.add(int(period.split('-')[0]))
+            elif by == 'day':
+                years.add(int(period.split('-')[0]))
+        except (ValueError, IndexError):
+            pass
+
+    if not years:
+        return {}
+
+    try:
+        country = locale.upper()  # e.g. 'us' → 'US'
+        hol_dict = {}
+        for year in years:
+            hol_dict.update(hol_lib.country_holidays(country, years=year))
+    except Exception:
+        return {}
+
+    # Map each holiday date to the period format used in trends
+    period_map = {}
+    for hol_date, hol_name in hol_dict.items():
+        try:
+            if by == 'week':
+                period_key = hol_date.strftime('%G-W%V')
+            elif by == 'day':
+                period_key = hol_date.strftime('%Y-%m-%d')
+            elif by == 'month':
+                period_key = hol_date.strftime('%Y-%m')
+            else:
+                continue
+        except Exception:
+            continue
+        if period_key in period_map:
+            period_map[period_key] += f', {hol_name}'
+        else:
+            period_map[period_key] = hol_name
+
+    return period_map
+
+
+def render_trends_table(trends, by='week', marathon_threshold=2, locale=None):
+    """Print commit cadence table with marathon flags to stdout."""
+    holidays_map = _load_holidays(locale, by, trends) if locale else {}
+
+    label = by.capitalize()
+    print(f"\n{'PERIOD':<12}  {'COUNT':>5}  {'FLAG':>8}  NOTES")
+    print(f"{'-'*12}  {'-'*5}  {'-'*8}  {'-'*40}")
+
+    total = 0
+    marathon_count = 0
+    for row in trends:
+        period = row['period']
+        count = row['count']
+        is_marathon = count > marathon_threshold
+        flag = 'MARATHON' if is_marathon else ''
+        notes = holidays_map.get(period, '')
+        total += count
+        if is_marathon:
+            marathon_count += 1
+        print(f"{period:<12}  {count:>5}  {flag:>8}  {notes}")
+
+    print(
+        f"\nTotal: {total} commits  "
+        f"|  {len(trends)} {by}(s) with activity  "
+        f"|  Marathons (>{marathon_threshold}/{ by}): {marathon_count}"
+    )
+
+
+def _cmd_discover_commit_trends(args):
+    """Handler for: pickaxe discover commit-trends"""
+    repo_path = os.path.abspath(getattr(args, 'repo', None) or '.')
+    by = getattr(args, 'by', 'week')
+    from_date = getattr(args, 'from_date', None)
+    to_date = getattr(args, 'to_date', None)
+    marathon_threshold = getattr(args, 'marathon_threshold', 2)
+    locale = getattr(args, 'holidays', None)
+
+    git_root = find_git_root(repo_path)
+    if git_root is None:
+        print(f"[pickaxe] error: {repo_path} is not inside a git repo", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[pickaxe discover commit-trends] repo={git_root}  by={by}", file=sys.stderr)
+
+    trends = commit_trends(repo_path, by=by, from_date=from_date, to_date=to_date)
+
+    if not trends:
+        print("No commits found for the given range.", file=sys.stderr)
+        return
+
+    fmt = getattr(args, 'format', 'table')
+    if fmt == 'json':
+        print(json.dumps(trends, indent=2))
+    else:
+        render_trends_table(trends, by=by, marathon_threshold=marathon_threshold, locale=locale)
+
+    if getattr(args, 'save', False):
+        summary = {
+            'repo': git_root,
+            'by': by,
+            'from_date': from_date,
+            'to_date': to_date,
+            'periods': len(trends),
+            'total_commits': sum(r['count'] for r in trends),
+            'marathons': sum(1 for r in trends if r['count'] > marathon_threshold),
+        }
+        sessions_dir = os.path.join(git_root, '.pickaxe', 'SESSIONS')
+        saved = _save_session_event('discover.commit-trends', git_root, summary, sessions_dir)
+        print(f"[pickaxe] session event saved → {saved}", file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
 # OUTPUT — discover / diagnose
 # --------------------------------------------------------------------------
 
@@ -566,7 +761,22 @@ def render_diagnose_table(result):
 # --------------------------------------------------------------------------
 
 def _cmd_discover(args):
-    root = os.path.abspath(getattr(args, 'root_dir', None) or args.root or '.')
+    noun = getattr(args, 'noun', None)
+
+    # Dispatch on known nouns first
+    if noun == 'commit-trends':
+        _cmd_discover_commit_trends(args)
+        return
+    if noun == 'drift':
+        print("[pickaxe discover drift] not yet implemented", file=sys.stderr)
+        sys.exit(1)
+
+    # Default: repo health map. Treat noun as root_dir if it looks like a path.
+    if noun and noun not in DISCOVER_NOUNS:
+        root = os.path.abspath(noun)
+    else:
+        root = os.path.abspath(getattr(args, 'root_dir', None) or '.')
+
     print(f"[pickaxe discover] scanning {root} ...", file=sys.stderr)
     entries = discover(root)
     if args.format == 'json':
@@ -635,12 +845,45 @@ def main():
 
     # --- discover ---
     p_discover = sub.add_parser(
-        'discover', help='Emit local repo map (path, remote, branch, health flags)'
+        'discover',
+        help='Repo map (default) or sub-target: commit-trends | drift',
     )
-    p_discover.add_argument('root_dir', nargs='?', default='.', metavar='root', help='Root dir to walk')
+    p_discover.add_argument(
+        'noun', nargs='?', default=None, metavar='target',
+        help='Sub-target: commit-trends | drift | (default: repo health map)',
+    )
+    p_discover.add_argument(
+        'root_dir', nargs='?', default='.', metavar='root',
+        help='Root dir for repo map (ignored when noun is a known sub-target)',
+    )
     p_discover.add_argument('--format', '-f', choices=['table', 'json'], default='table')
     p_discover.add_argument('--save', action='store_true',
                              help='Append session event to {root}/.pickaxe/SESSIONS/')
+    # commit-trends flags (only used when noun=commit-trends)
+    p_discover.add_argument(
+        '--repo', default=None, metavar='PATH',
+        help='Repo path for commit-trends (default: cwd git root)',
+    )
+    p_discover.add_argument(
+        '--by', choices=['week', 'day', 'month'], default='week',
+        help='Cadence granularity (default: week)',
+    )
+    p_discover.add_argument(
+        '--from', dest='from_date', default=None, metavar='DATE',
+        help='Start date YYYY-MM-DD (inclusive)',
+    )
+    p_discover.add_argument(
+        '--to', dest='to_date', default=None, metavar='DATE',
+        help='End date YYYY-MM-DD (inclusive)',
+    )
+    p_discover.add_argument(
+        '--marathon-threshold', type=int, default=2, metavar='N',
+        help='Flag weeks/days/months with > N commits as MARATHON (default: 2)',
+    )
+    p_discover.add_argument(
+        '--holidays', default=None, metavar='LOCALE',
+        help='Annotate holiday periods, e.g. "us" (requires: pip install holidays)',
+    )
     p_discover.set_defaults(func=_cmd_discover)
 
     # --- diagnose ---

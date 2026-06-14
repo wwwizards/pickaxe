@@ -2,7 +2,7 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Mine tool-worthy scripts from compound mono-repos.**
+**Mine tool-worthy scripts from compound mono-repos. Inspect repo health. Analyze commit cadence.**
 
 Scans a workspace directory tree, scores each script by how "tool-worthy" it is (has a shebang, version header, purpose block, few git commits = buried in the wrong repo), and outputs a ranked report with suggested `git-filter-repo` extraction commands for anything with history worth preserving.
 
@@ -12,7 +12,7 @@ Scans a workspace directory tree, scores each script by how "tool-worthy" it is 
 
 ## Prerequisites
 
-### v0.1 — discovery mode (current)
+### v0.1 — discovery mode
 
 | Dependency | Purpose | Install |
 |---|---|---|
@@ -21,6 +21,12 @@ Scans a workspace directory tree, scores each script by how "tool-worthy" it is 
 | `git-filter-repo` | suggested extraction commands are printed but **not executed** | `brew install git-filter-repo` |
 
 No `pip install` required — stdlib only.
+
+### Optional
+
+| Dependency | Purpose | Install |
+|---|---|---|
+| `holidays` | annotate commit-trends output with national holidays | `pip install holidays` |
 
 ### v0.2 — execute mode (planned)
 
@@ -35,21 +41,61 @@ Adds two runtime requirements on top of the above:
 
 ## Usage
 
+### Repo health — discover & diagnose
+
+```bash
+# Map all git repos under a root (health, remote, branch)
+python pickaxe.py discover ~/DATA/projects
+
+# JSON output for piping
+python pickaxe.py discover ~/DATA/projects --format json
+
+# Inspect a single repo's health
+python pickaxe.py diagnose ~/DATA/projects/my-tool
+```
+
+### Commit cadence — discover commit-trends
+
+```bash
+# Weekly cadence for the repo at cwd (default)
+python pickaxe.py discover commit-trends
+
+# Specific repo, daily granularity
+python pickaxe.py discover commit-trends --repo ~/DATA/projects/my-tool --by day
+
+# Monthly, date-range filtered
+python pickaxe.py discover commit-trends --by month --from 2026-01-01 --to 2026-06-30
+
+# Lower the marathon threshold (default: >2 commits/week)
+python pickaxe.py discover commit-trends --marathon-threshold 5
+
+# Annotate with US holidays (requires: pip install holidays)
+python pickaxe.py discover commit-trends --holidays us
+
+# JSON output
+python pickaxe.py discover commit-trends --format json
+
+# Save session event to .pickaxe/SESSIONS/
+python pickaxe.py discover commit-trends --save
+```
+
+### Extraction candidates — scan
+
 ```bash
 # Quick table scan — print ranked candidates to terminal
-python pickaxe.py ~/DATA/projects
+python pickaxe.py scan ~/DATA/projects
 
 # Full Markdown report with extraction commands
-python pickaxe.py ~/DATA/projects --output pickaxe-report.md
+python pickaxe.py scan ~/DATA/projects --output pickaxe-report.md
 
 # Lower the bar (score >= 2) to catch scripts without full headers
-python pickaxe.py ~/DATA/projects --min-score 2
+python pickaxe.py scan ~/DATA/projects --min-score 2
 
 # Scan specific extensions only
-python pickaxe.py ~/DATA/projects --extensions .py .ps1
+python pickaxe.py scan ~/DATA/projects --extensions .py .ps1
 
 # Dump everything regardless of score
-python pickaxe.py ~/DATA/projects --all
+python pickaxe.py scan ~/DATA/projects --all
 ```
 
 ---
@@ -91,13 +137,13 @@ The `--output` flag writes a full Markdown report including extraction commands:
 ````markdown
 ## `automation/tools/scripts/python/ipscan.py`
 
-| Field | Value |
-|---|---|
-| Score | 7 |
-| Version | 0.9 |
-| Created | 23-0713 |
-| License | MIT |
-| Git commits | 1 |
+| Field       | Value   |
+| ----------- | ------- |
+| Score       | 7       |
+| Version     | 0.9     |
+| Created     | 23-0713 |
+| License     | MIT     |
+| Git commits | 1       |
 
 **History worth preserving (1 commit):**
 ```bash
@@ -131,11 +177,15 @@ The `AUTODOC:` field closes the loop — it tells pickaxe (and future readers) h
 
 ## Roadmap
 
-> Full AS-IS vs TO-BE breakdown, v0.2 feature spec, and version plan: **[ROADMAP.md](ROADMAP.md)**
+> Full AS-IS vs TO-BE breakdown, feature spec, and version plan: **[ROADMAP.md](ROADMAP.md)**
 
-- [ ] `--format json` output for piping into other tools
-- [ ] `--since <date>` — only score files modified after a date
-- [ ] Auto-propose missing header blocks (inverted head2md)
+- [x] `discover` — repo health map (path, remote, branch, flags)
+- [x] `diagnose` — single-repo health inspection
+- [x] `discover commit-trends` — weekly/daily/monthly cadence, marathon detection, date range, holiday annotation
+- [ ] `discover drift` — compare local inventory vs canonical GitHub set
+- [ ] `deliver drift` — apply fixes from drift report
+- [ ] `--execute` — full git-filter-repo extraction pipeline
+- [ ] `--format json` for all subcommands (scan has it; others in progress)
 - [ ] GitHub Actions integration: run on PR to flag new tool-worthy scripts
 - [ ] Multi-repo index: build a searchable catalog across all miners
 

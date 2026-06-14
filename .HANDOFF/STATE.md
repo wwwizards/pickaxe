@@ -7,34 +7,45 @@
 # ABSTRACT: Live state of the pickaxe repo. Current version, open blockers,
 #     active backlog. Updated at each session close.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# VERSION:  0.2.0
+# UPDATED:  260614 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
+# VERSION:  0.3.3
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
 
-**Last updated:** 260612
-**Current version:** v0.2.0 (commit `89a35c6`)
+**Last updated:** 260614
+**Current version:** v0.3.3
 
 ------------------------------
 
 ## Snapshot
 
-- Phase: v0.2.0 — 5D command surface (discover + diagnose shipped)
+- Phase: v0.3.3 — commit-trends shipped (discover commit-trends subcommand)
 - Status: active
 
-## What shipped in v0.2.0
+## What shipped in v0.3.3
 
-- `diagnose(path)` — reads `.git/config`, flags: `ok | missing_git | missing_origin | stripped_config`
-- `discover(root)` — walks a tree for repo roots, emits `{path, rel, remote, branch, flags, health_ok}`
-- `_get_branch(path)` — reads `.git/HEAD`, handles detached HEAD
-- `test_pickaxe.py` — 30 tests (10 smoke baseline v0.1.1 + 9 diagnose + 11 discover), all green
-- CLI: `pickaxe discover [root] [--format table|json]` and `pickaxe diagnose [path] [--format table|json]`
-- Legacy positional scan preserved for backward compat
+- `commit_trends(repo_path, by, from_date, to_date)` — weekly/daily/monthly cadence from `git log`; returns `[{period, count}]`
+- `render_trends_table(trends, by, marathon_threshold, locale)` — PERIOD/COUNT/FLAG/NOTES table; MARATHON flag for periods exceeding threshold
+- `_load_holidays(locale, by, trends)` — optional `holidays` package integration for period annotation
+- `_cmd_discover_commit_trends(args)` — CLI handler dispatched from `discover` noun
+- `discover` subparser extended with noun dispatch (`commit-trends` | `drift`); all prior flags preserved
+- `test_pickaxe.py` — 69 tests total (21 new in `TestCommitTrends`), all green
+- README.md — usage examples for discover/diagnose/commit-trends; prerequisites updated; roadmap checklist
+- ROADMAP.md — `diagnose`, `discover`, `discover commit-trends` checked off in Track B
+- TESTING.md — created; full test matrix, fixture patterns, known gaps, run history
 
-## Current focus
+## What shipped in v0.3.2 (260603)
 
-Track B — repo hygiene and drift control. Next: manifest-driven deliver.
+- `_resolve_git_dir(path)` — resolves gitlink files (submodule worktrees)
+- `diagnose` + `discover` updated to handle `.git` as file (submodule)
+- 14 diagnose tests + 13 discover tests, gitlink coverage
+
+## What shipped in v0.2.0 (260612)
+
+- `diagnose(path)` — flags: `ok | missing_git | missing_origin | stripped_config`
+- `discover(root)` — repo map with `{path, rel, remote, branch, flags, health_ok}`
+- 30 tests (10 smoke + 9 diagnose + 11 discover)
 
 ## Next actions
 
@@ -47,6 +58,20 @@ Track B — repo hygiene and drift control. Next: manifest-driven deliver.
 
 - `discover` does not yet skip nested repos inside an already-found repo (may need `--no-recurse`)
 - No `repos.manifest.json` schema yet — blocks `deliver` and `drift`
+- `--holidays` annotation untested end-to-end (no `holidays` package in CI)
+
+------------------------------
+
+## Current focus
+
+Track B continued — `discover drift` + `deliver dirs` (manifest-driven). Track D MQL design in progress.
+
+## Next actions
+
+1. Define `repos.manifest.json` schema (path, expected_remote, branch, hygiene_baseline)
+2. `pickaxe discover drift` — diff local inventory vs manifest, report mismatches
+3. `pickaxe deliver dirs` — clone missing repos / restore missing remotes from manifest
+4. Session log schema design (D-07) — must precede execution pipeline (PX-01)
 
 ------------------------------
 
@@ -56,8 +81,9 @@ Track B — repo hygiene and drift control. Next: manifest-driven deliver.
 |---|---|---|---|
 | PX-01 | v0.2 execution pipeline (`--execute`, subdir mode, `.pickaxe/` chain-of-custody) | Design complete — not started | Requires D-07 session log schema first |
 | PX-02 | Session log schema design (D-07) | Not started | Must precede PX-01; feeds AIM training data pattern |
-| PX-03 | `repos.manifest.json` schema + `deliver dirs` + `discover drift` | In design | See Next actions above |
+| PX-03 | `repos.manifest.json` schema + `deliver dirs` + `discover drift` | In design | Next Track B milestone |
 | PX-04 | v0.3 cluster detection | Not started | Waiting on PX-01 |
+| PX-05 | `--holidays` end-to-end test | Not started | Needs `holidays` pkg in CI |
 | PX-05 | v0.4 workspace init/split commands | Design complete — not started | `pickaxe init`, `pickaxe workspace init`, `pickaxe workspace split` |
 | PX-06 | `--format json` output | Not started | v0.5 scope |
 | PX-07 | GitHub Actions workflow | Not started | v0.5 scope |

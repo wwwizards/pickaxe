@@ -501,3 +501,250 @@ class TestSessionLogging:
         assert event["phase"] == "scan"
         assert event["result"]["candidates_found"] == 0  # empty dir → 0 candidates
 
+
+# --------------------------------------------------------------------------
+# COMMIT TRENDS — discover commit-trends  (v0.3.3)
+# --------------------------------------------------------------------------
+
+def _make_git_repo_with_commits(tmp_path, name, commit_dates):
+    """
+    Create a real git repo at tmp_path/name with one empty commit per date.
+    commit_dates: list of ISO date strings ('YYYY-MM-DD').
+    Returns the repo path as a str.
+
+    Writes .git/config directly to avoid inheriting global git settings
+    (gpgsign, safe.directory, etc.) that would cause commits to fail in
+    tmp dirs on machines with strict git configs.
+    """
+    repo = tmp_path / name
+    repo.mkdir()
+
+    # Init repo
+    subprocess.check_call(["git", "init", "-b", "main", str(repo)],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Write config directly — bypasses global gpgsign, safe.directory, etc.
+    git_config = (
+        "[core]\n"
+        "\trepositoryformatversion = 0\n"
+        "\tfilemode = false\n"
+        "\tbare = false\n"
+        "[user]\n"
+        "\temail = t@t.com\n"
+        "\tname = Test\n"
+        "[commit]\n"
+        "\tgpgsign = false\n"
+    )
+    (repo / ".git" / "config").write_text(git_config, encoding="utf-8")
+
+    # Use ISO 8601 datetime format (git accepts bare YYYY-MM-DD but some builds don't)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "t@t.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "t@t.com",
+        "GIT_CONFIG_NOSYSTEM": "1",    # skip /etc/gitconfig
+        "HOME": str(tmp_path),         # skip ~/.gitconfig on this machine
+    }
+
+    for i, date in enumerate(commit_dates):
+        iso_date = f"{date}T12:00:00 +0000"
+        date_env = {**env, "GIT_AUTHOR_DATE": iso_date, "GIT_COMMITTER_DATE": iso_date}
+        (repo / f"file{i}.txt").write_text(f"commit {i}\n")
+        subprocess.check_call(["git", "-C", str(repo), "add", "."],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(
+            ["git", "-C", str(repo),
+             "-c", "commit.gpgsign=false",
+             "commit", "--allow-empty", "-m", f"commit {i}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=date_env,
+        )
+    return str(repo)
+
+
+class TestCommitTrends:
+
+    def test_commit_trends_function_exists(self):
+        assert hasattr(pickaxe, "commit_trends"), "pickaxe.commit_trends() not implemented"
+
+    def test_commit_trends_returns_list(self, tmp_path):
+        repo = _make_git_repo_with_commits(tmp_path, "r1", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="week")
+        assert isinstance(result, list)
+
+    def test_commit_trends_entries_have_required_keys(self, tmp_path):
+        repo = _make_git_repo_with_commits(tmp_path, "r2", ["2026-01-05"])
+        result = pickaxe.commit_trends(repo, by="week")
+        assert len(result) >= 1
+        for entry in result:
+            assert "period" in entry
+            assert "count" in entry
+
+    def test_commit_trends_week_format(self, tmp_path):
+        """Periods must be ISO week strings like '2026-W02'."""
+        repo = _make_git_repo_with_commits(tmp_path, "r3", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="week")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-W\d{2}$", entry["period"]), \
+                f"unexpected period format: {entry['period']}"
+
+    def test_commit_trends_day_format(self, tmp_path):
+        """by='day' must produce YYYY-MM-DD periods."""
+        repo = _make_git_repo_with_commits(tmp_path, "r4", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="day")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-\d{2}-\d{2}$", entry["period"]), \
+                f"unexpected day format: {entry['period']}"
+
+    def test_commit_trends_month_format(self, tmp_path):
+        """by='month' must produce YYYY-MM periods."""
+        repo = _make_git_repo_with_commits(tmp_path, "r5", ["2026-01-05", "2026-02-10"])
+        result = pickaxe.commit_trends(repo, by="month")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-\d{2}$", entry["period"]), \
+                f"unexpected month format: {entry['period']}"
+
+    def test_commit_trends_counts_correctly(self, tmp_path):
+        """3 commits in the same week → count=3 for that week."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r6",
+            ["2026-01-05", "2026-01-06", "2026-01-07"],  # all in 2026-W02
+        )
+        result = pickaxe.commit_trends(repo, by="week")
+        week = next((r for r in result if r["period"] == "2026-W02"), None)
+        assert week is not None, f"2026-W02 not found in {result}"
+        assert week["count"] == 3
+
+    def test_commit_trends_empty_repo_returns_empty(self, tmp_path):
+        """A repo with no commits must return []."""
+        repo = tmp_path / "empty-repo"
+        repo.mkdir()
+        subprocess.check_call(["git", "init", str(repo)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = pickaxe.commit_trends(str(repo), by="week")
+        assert result == []
+
+    def test_commit_trends_non_repo_returns_empty(self, tmp_path):
+        """A plain directory (no .git) must return []."""
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        result = pickaxe.commit_trends(str(plain), by="week")
+        assert result == []
+
+    def test_commit_trends_sorted_chronologically(self, tmp_path):
+        """Periods must be in ascending order."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r7",
+            ["2026-01-05", "2026-03-02", "2026-02-09"],  # out of order input
+        )
+        result = pickaxe.commit_trends(repo, by="week")
+        periods = [r["period"] for r in result]
+        assert periods == sorted(periods)
+
+    def test_commit_trends_from_date_filter(self, tmp_path):
+        """--from should exclude commits before the given date."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r8",
+            ["2026-01-05", "2026-03-02"],
+        )
+        result = pickaxe.commit_trends(repo, by="month", from_date="2026-02-01")
+        # Only the March commit should appear
+        months = [r["period"] for r in result]
+        assert "2026-01" not in months
+        assert "2026-03" in months
+
+    def test_commit_trends_to_date_filter(self, tmp_path):
+        """--to should exclude commits after the given date."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r9",
+            ["2026-01-05", "2026-03-02"],
+        )
+        result = pickaxe.commit_trends(repo, by="month", to_date="2026-02-01")
+        months = [r["period"] for r in result]
+        assert "2026-03" not in months
+        assert "2026-01" in months
+
+    def test_commit_trends_on_live_pickaxe_repo(self):
+        """Smoke: running against pickaxe's own repo must return non-empty list."""
+        result = pickaxe.commit_trends(HERE, by="week")
+        assert len(result) > 0, "Expected at least one week of commits in pickaxe repo"
+        assert all("count" in r and r["count"] > 0 for r in result)
+
+    def test_render_trends_table_function_exists(self):
+        assert hasattr(pickaxe, "render_trends_table")
+
+    def test_render_trends_table_outputs_header(self, tmp_path, capsys):
+        """render_trends_table must print PERIOD and COUNT headers."""
+        trends = [{"period": "2026-W01", "count": 3}, {"period": "2026-W02", "count": 1}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "PERIOD" in out
+        assert "COUNT" in out
+
+    def test_render_trends_table_flags_marathon(self, tmp_path, capsys):
+        """A period with count > threshold must show MARATHON in output."""
+        trends = [{"period": "2026-W24", "count": 5}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "MARATHON" in out
+
+    def test_render_trends_table_no_false_marathon(self, tmp_path, capsys):
+        """A period at exactly the threshold must NOT be flagged as marathon."""
+        trends = [{"period": "2026-W24", "count": 2}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "MARATHON" not in out
+
+    def test_cli_discover_commit_trends_exits_zero(self, tmp_path):
+        """CLI: pickaxe discover commit-trends --repo <live-repo> must exit 0."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+
+    def test_cli_discover_commit_trends_json(self, tmp_path):
+        """CLI: --format json must emit valid JSON list."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE, "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "period" in data[0]
+        assert "count" in data[0]
+
+    def test_cli_discover_commit_trends_by_month(self, tmp_path):
+        """CLI: --by month must produce month-format periods in JSON output."""
+        import re
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE,
+             "--format", "json", "--by", "month"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        data = json.loads(result.stdout)
+        for entry in data:
+            assert re.match(r"\d{4}-\d{2}$", entry["period"]), \
+                f"unexpected month format: {entry['period']}"
+
+    def test_cli_discover_default_still_works(self, tmp_path):
+        """Backward compat: pickaxe discover <path> (no noun) must still work."""
+        _make_repo(tmp_path, "compat-repo", "https://github.com/test/compat.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        assert "compat-repo" in result.stdout
+
