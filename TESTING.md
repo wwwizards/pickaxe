@@ -21,12 +21,12 @@ binary on PATH. No network calls. No Azure/GitHub auth.
 
 | Class | Count | What it covers |
 |---|---|---|
-| `TestSmoke` | 10 | Module imports; `find_git_root`; `parse_header` (full + minimal + live file); `score_candidate`; `extraction_script`; CLI `--help` exit 0 |
+| `TestSmoke` | 12 | Module imports; `find_git_root`; `parse_header` (full + minimal + live file); `score_candidate`; `extraction_script`; CLI `--help` exit 0; `already_extracted` key present; same-repo not annotated (PX-B3) |
 | `TestDiagnose` | 14 | `diagnose()` on healthy repo, detached folder, missing origin, stripped config; remote URL returned; never-mutates assertion; gitlink / submodule worktree (has_git, 'submodule' flag, origin resolution, missing_origin) |
-| `TestDiscover` | 13 | `discover()` on empty dir, single repo, multiple repos; required keys; health_ok true/false; remote URL + branch returned; never-mutates assertion; live self-scan; gitlink submodule found + flagged + health_ok |
+| `TestDiscover` | 15 | `discover()` on empty dir, single repo, multiple repos; required keys; health_ok true/false; remote URL + branch returned; never-mutates assertion; live self-scan; gitlink submodule found + flagged + health_ok; `--submodules-only` excludes normal repos; `--submodules-only` empty when no submodules (PX-B1) |
 | `TestSessionLogging` | 11 | `_save_session_event` creates NDJSON file; valid JSON per line; target is relative + forward-slash; multiple appends; `_build_discover_summary` flag counts; `_build_diagnose_summary` keys; CLI `discover --save` creates sessions dir; `_build_scan_summary` keys + empty-list edge case; CLI `scan --save` creates session entry |
 | `TestCommitTrends` | 21 | `commit_trends()` exists + returns list + required keys; week/day/month format strings; count accuracy (3 commits same week → count=3); empty repo → `[]`; non-repo path → `[]`; chronological sort; `--from` / `--to` date filters; live pickaxe repo smoke; `render_trends_table` exists + prints PERIOD/COUNT headers + MARATHON flag + no false-positive at threshold; CLI exit 0; CLI `--format json` valid list with period+count; CLI `--by month` format; backward-compat `discover <path>` (no noun) |
-| **Total** | **69** | |
+| **Total** | **73** | |
 
 ## Fixture patterns
 
@@ -65,6 +65,7 @@ complete vs bare headers for scoring tests.
 
 | Date | Runner | Python | Result | Duration | Notes |
 |---|---|---|---|---|---|
+| 2026-06-15 | pytest 9.0.3 | 3.14.5 (win32) | 73 passed / 0 failed | 141s | v0.3.4 — already_extracted (PX-B3) + --submodules-only (PX-B1) |
 | 2026-06-14 | pytest 9.0.3 | 3.14.5 (win32) | 69 passed / 0 failed | 76s | v0.3.3 — commit-trends (21 new tests) |
 | 2026-06-03 | pytest 9.0.3 | 3.14.5 (win32) | 48 passed / 0 failed | — | v0.3.2 — gitlink submodule support (diagnose + discover) |
 | 2026-05-27 | pytest 9.0.3 | 3.14.5 (win32) | — | — | v0.3.0 — session logging, scan summary, `--save` flag |

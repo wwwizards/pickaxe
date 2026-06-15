@@ -15,7 +15,8 @@
 # UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
 # UPDATED: 26-0603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
 # UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - commit_trends (discover commit-trends; --by week|day|month; --from/--to; --marathon-threshold; --holidays)
-# VERSION: v0.3.3
+# UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - scan: already-extracted annotation (PX-B3); discover --submodules-only (PX-B1)
+# VERSION: v0.3.4
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -142,6 +143,20 @@ def _get_branch(path):
         return content[:8]  # detached HEAD — return short hash
     except Exception:
         return None
+
+
+def _get_remote_url(path):
+    """Return the 'origin' remote URL for the git repo at path, or None."""
+    try:
+        result = subprocess.run(
+            ['git', '-C', path, 'remote', 'get-url', 'origin'],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
 
 
 def diagnose(path):
@@ -332,6 +347,11 @@ def score_candidate(meta, git_commits):
 
 def scan(root, extensions, min_score):
     root = os.path.abspath(root)
+    # Determine the git root of the scan root itself so we can detect
+    # candidates that already live in their own separate repo (submodules,
+    # externally-cloned directories, etc.) and annotate them rather than
+    # silently suggesting re-extraction.
+    scan_git_root = find_git_root(root)
     candidates = []
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -354,14 +374,22 @@ def scan(root, extensions, min_score):
             if score < min_score:
                 continue
 
+            # Detect already-extracted: file lives in a different git repo than
+            # the scan root.  Retrieve that repo's remote for the annotation.
+            already_extracted = None
+            if git_root and scan_git_root and os.path.abspath(git_root) != os.path.abspath(scan_git_root):
+                remote = _get_remote_url(git_root)
+                already_extracted = remote or git_root
+
             candidates.append({
-                'path':           fpath,
-                'rel':            os.path.relpath(fpath, root),
-                'score':          score,
-                'git_root':       git_root,
-                'commits':        commit_count,
-                'recent_commits': recent_commits,
-                'meta':           meta,
+                'path':             fpath,
+                'rel':              os.path.relpath(fpath, root),
+                'score':            score,
+                'git_root':         git_root,
+                'commits':          commit_count,
+                'recent_commits':   recent_commits,
+                'meta':             meta,
+                'already_extracted': already_extracted,
             })
 
     # Sort by score desc, then path
@@ -445,11 +473,15 @@ def render_markdown(candidates, root, args):
 
 def render_table(candidates, root, dry_run=False):
     """Compact terminal table output."""
-    print(f"\n{'SCORE':>5}  {'COMMITS':>7}  {'VERSION':>8}  {'PATH'}")
-    print(f"{'-'*5}  {'-'*7}  {'-'*8}  {'-'*60}")
+    print(f"\n{'SCORE':>5}  {'COMMITS':>7}  {'VERSION':>8}  {'NOTE':>26}  PATH")
+    print(f"{'-'*5}  {'-'*7}  {'-'*8}  {'-'*26}  {'-'*60}")
     for c in candidates:
         ver = c['meta']['version'] or '—'
-        print(f"{c['score']:>5}  {c['commits']:>7}  {ver:>8}  {c['rel']}")
+        if c.get('already_extracted'):
+            note = f'[extracted → {c["already_extracted"][:22]}]'
+        else:
+            note = ''
+        print(f"{c['score']:>5}  {c['commits']:>7}  {ver:>8}  {note:>26}  {c['rel']}")
     print(f"\n{len(candidates)} candidates found.")
     if dry_run:
         print()
@@ -779,6 +811,11 @@ def _cmd_discover(args):
 
     print(f"[pickaxe discover] scanning {root} ...", file=sys.stderr)
     entries = discover(root)
+
+    # --submodules-only: filter to entries where 'submodule' flag is present
+    if getattr(args, 'submodules_only', False):
+        entries = [e for e in entries if 'submodule' in e.get('flags', [])]
+
     if args.format == 'json':
         print(json.dumps(entries, indent=2))
     else:
@@ -814,14 +851,15 @@ def _cmd_scan(args):
     if fmt == 'json':
         # Emit JSON-serialisable subset (drop non-serialisable meta internals)
         out = [{
-            'rel':     c['rel'],
-            'score':   c['score'],
-            'commits': c['commits'],
-            'version': c['meta'].get('version'),
-            'created': c['meta'].get('created'),
-            'author':  c['meta'].get('author'),
-            'license': c['meta'].get('license'),
-            'purpose': c['meta'].get('purpose'),
+            'rel':              c['rel'],
+            'score':            c['score'],
+            'commits':          c['commits'],
+            'version':          c['meta'].get('version'),
+            'created':          c['meta'].get('created'),
+            'author':           c['meta'].get('author'),
+            'license':          c['meta'].get('license'),
+            'purpose':          c['meta'].get('purpose'),
+            'already_extracted': c.get('already_extracted'),
         } for c in candidates]
         print(json.dumps(out, indent=2))
     elif args.output:
@@ -857,6 +895,8 @@ def main():
         help='Root dir for repo map (ignored when noun is a known sub-target)',
     )
     p_discover.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_discover.add_argument('--submodules-only', action='store_true', dest='submodules_only',
+                             help='Only show repos detected as git submodules (gitlink .git file)')
     p_discover.add_argument('--save', action='store_true',
                              help='Append session event to {root}/.pickaxe/SESSIONS/')
     # commit-trends flags (only used when noun=commit-trends)

@@ -142,9 +142,9 @@ Group files into extraction clusters using heuristics:
 
 Output a cluster summary before individual file scores.
 
-### `--format json`
+### `--format json` ✅ shipped v0.3.3
 
-Emit the full candidate list as JSON for downstream piping into other tools (e.g., `converters`, a dashboard, a CI gate).
+Emit the full candidate list as JSON for downstream piping into other tools (e.g., `converters`, a dashboard, a CI gate). Supported on `scan`, `discover`, and `discover commit-trends`. `already_extracted` field included in scan JSON output (v0.3.4).
 
 ### `--since <date>`
 

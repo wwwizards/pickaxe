@@ -193,6 +193,41 @@ class TestSmoke:
         )
         assert result.returncode == 0
 
+    # --- PX-B3: already_extracted annotation ---
+
+    def test_scan_candidate_has_already_extracted_key(self, tmp_path):
+        """Every scan candidate dict must include 'already_extracted' key."""
+        # Script inside a fresh isolated repo — not already extracted
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        subprocess.run(['git', 'init', str(repo)], capture_output=True)
+        script = repo / "tool.py"
+        script.write_text("#!/usr/bin/env python3\n# VERSION: 1.0.0\n# PURPOSE: test\n# LICENSE: MIT\n# CREATED: 2026-01-01\npass\n")
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'init',
+                        '-c', 'user.email=t@t.com', '-c', 'user.name=T',
+                        '-c', 'commit.gpgsign=false'], capture_output=True)
+        candidates = pickaxe.scan(str(tmp_path), ['.py'], min_score=0)
+        assert len(candidates) >= 1
+        for c in candidates:
+            assert 'already_extracted' in c
+
+    def test_scan_same_repo_not_annotated_as_extracted(self, tmp_path):
+        """A file inside the scan root's own repo must have already_extracted=None."""
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        subprocess.run(['git', 'init', str(repo)], capture_output=True)
+        script = repo / "tool.py"
+        script.write_text("#!/usr/bin/env python3\n# VERSION: 1.0.0\n# PURPOSE: test\n# LICENSE: MIT\n# CREATED: 2026-01-01\npass\n")
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'init',
+                        '-c', 'user.email=t@t.com', '-c', 'user.name=T',
+                        '-c', 'commit.gpgsign=false'], capture_output=True)
+        # Scan from within the repo — same git root, not extracted
+        candidates = pickaxe.scan(str(repo), ['.py'], min_score=0)
+        for c in candidates:
+            assert c['already_extracted'] is None
+
 
 # --------------------------------------------------------------------------
 # DIAGNOSE — repo health inspection  (v0.2 — failing until implemented)
@@ -367,6 +402,35 @@ class TestDiscover:
         results = pickaxe.discover(str(tmp_path))
         sub_entry = next(r for r in results if r["rel"] == "my-sub")
         assert sub_entry["health_ok"] is True
+
+    # --- PX-B1: --submodules-only ---
+
+    def test_cli_discover_submodules_only_returns_only_submodules(self, tmp_path):
+        """--submodules-only must exclude normal repos, keep only gitlink entries."""
+        _make_repo(tmp_path, "normal-repo", "https://github.com/test/normal.git")
+        _make_submodule_repo(tmp_path, "sub-repo", "https://github.com/test/sub.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path), "--submodules-only", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        rels = [e["rel"] for e in data]
+        assert "sub-repo" in rels
+        assert "normal-repo" not in rels
+
+    def test_cli_discover_submodules_only_empty_when_no_submodules(self, tmp_path):
+        """--submodules-only on a tree with no gitlinks must return empty list."""
+        _make_repo(tmp_path, "plain", "https://github.com/test/plain.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path), "--submodules-only", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data == []
 
 
 # --------------------------------------------------------------------------

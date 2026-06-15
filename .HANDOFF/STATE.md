@@ -13,15 +13,26 @@
 # --------------------------------------------------------------------------
 ```
 
-**Last updated:** 260614
-**Current version:** v0.3.3
+**Last updated:** 260615
+**Current version:** v0.3.4
 
 ------------------------------
 
 ## Snapshot
 
-- Phase: v0.3.3 — commit-trends shipped (discover commit-trends subcommand)
+- Phase: v0.3.4 — already_extracted annotation (PX-B3) + --submodules-only (PX-B1) + --format json ✅ confirmed shipped
 - Status: active
+
+## What shipped in v0.3.4 (260615)
+
+- `scan()` — `already_extracted` field on every candidate; non-null when file lives in a
+  different git root than the scan root (annotates `[extracted → <remote>]` in table + JSON)
+- `_get_remote_url(path)` helper — returns origin URL for any git repo path
+- `render_table()` — NOTE column added; shows `already_extracted` annotation
+- `_cmd_scan` JSON output — `already_extracted` field included
+- `discover --submodules-only` flag — filters repo map to gitlink (submodule) entries only
+- `test_pickaxe.py` — 73 tests total (4 new: 2 PX-B3 in TestSmoke, 2 PX-B1 in TestDiscover), all green
+- ROADMAP.md — `--format json` marked ✅ shipped; Track B PX-B1 + PX-B3 checked off
 
 ## What shipped in v0.3.3
 
