@@ -290,12 +290,36 @@ Foundational dependencies:
 - `.ai-labs.tools.yaml` `remote.version` field — needed; add as `~` seed for all 17 entries
 - Workspace parent-chain model — needed (v0.4)
 
+### Track E — Manifest management + workspace sync
+
+The YAML is the source of truth. The MD companion is the human-readable view. The `.AI-TRAINING/` folder is the machine-local override layer. Track E keeps all three in sync.
+
+**`pickaxe discover tools`** — YAML → MD manifest generation:
+
+- [ ] `pickaxe discover tools [--write]` — read `.ai-labs.tools.yaml`, emit `.ai-labs.tools.md` companion (Locations/Actions matrix, hex status colors, HERE/THERE drift column)
+- [ ] `pickaxe discover tools --diff` — show delta between current YAML and on-disk MD; non-zero exit if drift detected (CI-safe)
+- [ ] `pickaxe discover tools --sync` — back-propagate manual MD edits to YAML source (round-trip fidelity)
+- [ ] `pickaxe discover tools --graph` — emit DOT/mermaid from `related:` edges for visualization
+
+**`.AI-TRAINING/` workspace fork** — any peer node (Fordham, client, second machine) can fork the
+tools manifest locally, override HERE paths and implemented tool subset, and detect upstream drift:
+
+- [ ] `.AI-TRAINING/tools.yaml` — local fork seeded from `ai-labs/.ai-labs.tools.yaml`; HERE fields remapped to local paths; unused tools removed or marked `status: not-implemented`
+- [ ] `.AI-TRAINING/.sync-ref` — tracks last-synced ai-labs SHA + workspace node identity; written by `pickaxe sync`
+- [ ] `pickaxe sync [ai-labs]` — compare `.sync-ref` SHA to current ai-labs HEAD; emit `DELTA.md` listing: new upstream tools, modified tool entries with local overrides, sub-project git status; update `.sync-ref`
+- [ ] `pickaxe discover tools --here <path>` — generate MD with HERE remapped to `<path>` (supports fork init from upstream YAML without manual edits)
+
+Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute or resolvable from workspace root for HERE detection to work across machines.
+
+---
+
 ### Done criteria by milestone
 
 - [ ] `v0.2` done: extraction pipeline runs end-to-end on at least one real carve-out
 - [ ] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state
 - [ ] `v0.6` done: `pickaxe push <name>` completes sub → parent chain without manual git steps
 - [ ] `v0.8` done: `pickaxe fetch` populates `remote.version` and drift table is live
+- [ ] `v0.9` done: `pickaxe discover tools` round-trips YAML ↔ MD and `pickaxe sync` emits DELTA.md
 - [ ] `v1.0` done: context-oracle flow can answer "do I need to build this?" with provenance-backed evidence
 
 ---
@@ -308,6 +332,7 @@ Foundational dependencies:
 | v0.2 | Extraction | `--execute`, subdir mode, `.pickaxe/` chain-of-custody, AI context detection, full pipeline dry-run output |
 | v0.3 | Clustering | Cluster detection, shared-history grouping |
 | v0.4 | Workspace | `pickaxe init <slug>`, `pickaxe workspace init`, `pickaxe workspace split` — cascade-aware scaffold for HOBOTS `.PROTOCOL/` + `AGENTS.md` + `DESIGN.md` + `SPEC.md` inheritance; nested monorepo support; `SPLIT-FROM:`/`SPLIT-TO:` lineage in STATE.md |
+| v0.9 | Manifest | `pickaxe discover tools` (YAML → MD round-trip); `pickaxe sync` (`.AI-TRAINING/` fork + delta); `pickaxe discover tools --diff` (CI drift gate) |
 | v0.5 | Automation | `--format json`, `--since`, GitHub Actions workflow |
 | v0.6 | Collaborate | `pickaxe push/pull/fetch/status <dotted-name>` — submodule-aware git passthrough; full sub → parent chain in one command; `remote.version` drift table |
 | v0.7 | Collaborate+ | `pickaxe log/diff/<verb>` passthrough; `--wrap` flag writes handoff + STATE.md before push; multi-parent chain (sub → mono → grandparent) |
@@ -375,4 +400,4 @@ v0.2 and v0.3 (extraction, clustering) remain valid — they are the *foundation
 
 ---
 
-*Roadmap authored 26-0518. North Star added 26-0526. Track D (Collaborate/MQL) added 26-0613.* *Reference session: [HANDOFF.interrim-260518JN-Miners.md](../../projects/automation/AAP-NorthStar-Roadmap/HANDOFF.interrim-260518JN-Miners.md)*
+*Roadmap authored 26-0518. North Star added 26-0526. Track D (Collaborate/MQL) added 26-0613. Track E (Manifest/Workspace Sync) added 260714.* *Reference session: [HANDOFF.interrim-260518JN-Miners.md](../../projects/automation/AAP-NorthStar-Roadmap/HANDOFF.interrim-260518JN-Miners.md)*
