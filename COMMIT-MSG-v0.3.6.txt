@@ -1,0 +1,57 @@
+feat(backup+drift): v0.3.5 backup/restore + v0.3.6 discover drift — 98 tests
+
+## Changes
+
+pickaxe.py v0.3.4 -> v0.3.6:
+
+v0.3.5 — backup/restore (PX-B4):
+  backup_workspace(root, dest, skip_working_tree, force):
+    discovers all repos; creates bundles/ via git bundle create --all;
+    optionally copies working tree; writes manifest.json. Guard: raises
+    FileExistsError if dest non-empty without --force.
+  restore_workspace(backup, dest):
+    reads manifest.json; git clones each bundle to target path; re-adds
+    origin remote. Returns [{rel, status}] (ok/already_exists/missing_bundle/
+    clone_failed).
+  _render_backup_table, _render_restore_table, _cmd_backup, _cmd_restore
+  CLI: backup [root] --to DEST [--skip-working-tree] [--force] [-f table|json]
+  CLI: restore [backup] --to DEST [-f table|json]
+  Fixes: datetime.utcnow() -> datetime.now(tz) (Python 3.14 deprecation);
+    unicode arrow -> ASCII (Windows cp1252); --force flag for partial dest.
+
+v0.3.6 — discover drift (PX-D1):
+  discover_remote_drift(root):
+    walks root via discover(); fetches each origin; measures ahead/behind/dirty
+    per repo. flags: push-needed | behind | uncommitted | no-remote | fetch-failed.
+  _render_drift_table(results): flags + remote columns, summary count.
+  _cmd_discover: replaces "not yet implemented" stub for noun=='drift'.
+  Replaces standalone drift_check.py prototype (deleted).
+
+test_pickaxe.py v0.3.4 -> v0.3.6:
+  Section 4 — Backup (10 tests): manifest keys, bundles dir, skip-working-tree,
+    multi-repo, force flag, CLI, JSON format, guard for non-empty dest.
+  Section 5 — Restore (7 tests): missing manifest error, clone, skip existing,
+    missing bundle, remote re-attach, CLI.
+  Section 6 — Drift (8 tests): no-remote flag, clean repo no flags, push-needed,
+    behind, uncommitted, result keys, CLI, JSON format.
+  _make_clone_pair() helper added: upstream + clone pair for drift tests.
+  Total: 98 tests, all green (pytest 9.0.3 / Python 3.14.5).
+
+README.md:
+  New section "Backup & restore" (commands, dest tree, restore table, OneDrive tip).
+  New section "Remote drift -- discover drift" (columns table, flag definitions).
+  Roadmap: backup, restore, discover drift all ticked [x].
+
+.HANDOFF/DESIGN.md: design notes updated.
+sys-tools/: STATE.md, README.md, probes-chart.py updated.
+.HANDOFF/260619-fsQL-chat-search-design-sketch.md: new design sketch added.
+
+## Relations delta
++ pickaxe.backup_workspace  -> consumes: discover()      (new internal edge)
++ pickaxe.discover_drift    -> consumes: discover()      (new internal edge)
+~ pickaxe: v0.3.4 -> v0.3.6 (two feature increments in one commit)
+
+## Stats
+- Author: Joe Negron + Claude(Sonnet4.6)::Copilot::ai-labs.SOLOMON
+- Sessions: 260721 (backup/restore implemented + run), 260721 (discover drift)
+- Tests: 73 (v0.3.4) -> 98 (v0.3.6) green

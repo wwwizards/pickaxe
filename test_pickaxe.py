@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 # --------------------------------------------------------------------------
-# Script: test_pickaxe.py
+# SCRIPT: test_pickaxe.py
 # --------------------------------------------------------------------------
 # ABSTRACT: Test suite for pickaxe.py.
-#     Section 1 — Smoke: v0.1.1 baseline. Must pass before any changes.
-#     Section 2 — Diagnose: v0.2 health checks. Failing until implemented.
-#     Section 3 — Discover: v0.2 repo map. Failing until implemented.
+#     Section 1 - Smoke:        v0.1.1 baseline (scan, score, header parsing)
+#     Section 2 - Diagnose:     v0.2 single-repo health checks
+#     Section 3 - Discover:     v0.2 repo map + commit-trends
+#     Section 4 - Backup:       v0.3.5 bundle + working-tree snapshot
+#     Section 5 - Restore:      v0.3.5 restore from manifest
+#     Section 6 - Drift:        v0.3.6 fetch + ahead/behind/dirty per repo
 #
-#     Run all:          pytest test_pickaxe.py -v
-#     Smoke only:       pytest test_pickaxe.py -v -k Smoke
-#     Failing (v0.2):   pytest test_pickaxe.py -v -k "Diagnose or Discover"
+#     Run all:              pytest test_pickaxe.py -v
+#     Smoke only:           pytest test_pickaxe.py -v -k Smoke
+#     Drift only:           pytest test_pickaxe.py -v -k Drift
 #
 # CREATED: 26-0526 - BY: wwwizards <github.com/wwwizards>
-# VERSION: v0.1.0
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - backup/restore test sections (PX-B4)
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - discover drift test section (PX-D1)
+# VERSION: v0.3.6
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # --------------------------------------------------------------------------
 
@@ -572,11 +577,11 @@ class TestSessionLogging:
 
 def _make_git_repo_with_commits(tmp_path, name, commit_dates):
     """
-    Create a real git repo at tmp_path/name with one empty commit per date.
+    CREATE:  a real git repo at tmp_path/name with one empty commit per date.
     commit_dates: list of ISO date strings ('YYYY-MM-DD').
     Returns the repo path as a str.
 
-    Writes .git/config directly to avoid inheriting global git settings
+    UPDATE: .git/config directly to avoid inheriting global git settings
     (gpgsign, safe.directory, etc.) that would cause commits to fail in
     tmp dirs on machines with strict git configs.
     """
@@ -811,4 +816,362 @@ class TestCommitTrends:
         )
         assert result.returncode == 0, f"non-zero exit: {result.stderr}"
         assert "compat-repo" in result.stdout
+
+
+# --------------------------------------------------------------------------
+# BACKUP / RESTORE — v0.3.5
+# --------------------------------------------------------------------------
+
+def _make_real_repo(parent, name, origin_url=None):
+    """
+    Create a real git repo with one commit under parent/name.
+    Required for bundle tests (git bundle needs at least one commit).
+    """
+    repo = parent / name
+    repo.mkdir()
+    for cmd in [
+        ["git", "-C", str(repo), "init", "-b", "main"],
+        ["git", "-C", str(repo), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(repo), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    (repo / "README.md").write_text("# test\n")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"],
+                   capture_output=True, check=True)
+    if origin_url:
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", origin_url],
+                       capture_output=True, check=True)
+    return repo
+
+
+class TestBackupSmoke:
+    """pickaxe.backup_workspace — manifest, bundles, working-tree."""
+
+    def test_backup_creates_manifest(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "manifest.json").is_file()
+
+    def test_manifest_required_keys(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        for key in ("pickaxe_version", "created", "root", "repos"):
+            assert key in m, f"manifest missing key: {key}"
+
+    def test_backup_creates_bundles_dir(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "bundles").is_dir()
+
+    def test_backup_bundles_each_repo(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        _make_real_repo(root, "repo-b")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        ok = [r for r in m["repos"] if r["bundle_ok"]]
+        assert len(ok) == 2
+
+    def test_backup_working_tree_copied(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        (root / "uncommitted.txt").write_text("unsaved work\n")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "working-tree").is_dir()
+        assert (dest / "working-tree" / "uncommitted.txt").is_file()
+
+    def test_backup_working_tree_excludes_git_dirs(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        for dirpath, dirnames, _ in os.walk(str(dest / "working-tree")):
+            assert ".git" not in dirnames, f".git leaked into working-tree at {dirpath}"
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+
+    def test_backup_skip_working_tree_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest), skip_working_tree=True)
+        assert not (dest / "working-tree").exists()
+        assert "working_tree" not in pickaxe.json.loads(
+            (dest / "manifest.json").read_text()
+        )
+
+    def test_manifest_repo_entry_shape(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a", origin_url="https://github.com/test/a.git")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        repo = m["repos"][0]
+        for key in ("rel", "path", "bundle", "bundle_ok", "remote", "branch", "flags"):
+            assert key in repo, f"repo entry missing key: {key}"
+
+    def test_cli_backup_creates_manifest(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak-cli"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "backup", str(root), "--to", str(dest)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (dest / "manifest.json").is_file()
+
+    def test_cli_backup_json_format(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak-json"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "backup", str(root), "--to", str(dest), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert "repos" in data
+
+
+class TestRestoreSmoke:
+    """pickaxe.restore_workspace — reads manifest, clones bundles, re-adds remotes."""
+
+    def test_restore_missing_manifest_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            pickaxe.restore_workspace(
+                str(tmp_path / "nonexistent"), str(tmp_path / "dest")
+            )
+
+    def test_restore_clones_repos(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        results = pickaxe.restore_workspace(str(bak), str(dest))
+        ok = [r for r in results if r["status"] == "ok"]
+        assert len(ok) >= 1
+
+    def test_restore_result_entry_shape(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+        results = pickaxe.restore_workspace(str(bak), str(tmp_path / "dest"))
+        for r in results:
+            assert "rel" in r and "status" in r
+
+    def test_restore_skips_already_existing(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        pickaxe.restore_workspace(str(bak), str(dest))
+        results2 = pickaxe.restore_workspace(str(bak), str(dest))
+        already = [r for r in results2 if r["status"] == "already_exists"]
+        assert len(already) >= 1
+
+    def test_restore_missing_bundle_reported(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(bak))
+        # Delete a bundle to simulate partial backup
+        (bak / m["repos"][0]["bundle"]).unlink()
+
+        results = pickaxe.restore_workspace(str(bak), str(tmp_path / "dest"))
+        missing = [r for r in results if r["status"] == "missing_bundle"]
+        assert len(missing) >= 1
+
+    def test_restore_remote_reattached(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a", origin_url="https://github.com/test/a.git")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        results = pickaxe.restore_workspace(str(bak), str(dest))
+        ok = [r for r in results if r["status"] == "ok"]
+        assert len(ok) >= 1
+        # Verify origin was re-added
+        restored_path = dest / "repo-a"
+        if restored_path.exists():
+            r = subprocess.run(
+                ["git", "-C", str(restored_path), "remote", "get-url", "origin"],
+                capture_output=True, text=True,
+            )
+            assert "github.com/test/a.git" in r.stdout
+
+    def test_cli_restore(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored-cli"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "restore", str(bak), "--to", str(dest)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+
+# --------------------------------------------------------------------------
+# Section 6 — Drift (v0.3.6)
+# --------------------------------------------------------------------------
+
+def _make_clone_pair(parent, name):
+    """
+    Create an upstream repo (one commit) and a clone of it.
+    Returns (upstream_path, clone_path). The clone has origin pointing to upstream.
+    """
+    upstream = parent / f"{name}-upstream"
+    upstream.mkdir()
+    for cmd in [
+        ["git", "-C", str(upstream), "init", "-b", "main"],
+        ["git", "-C", str(upstream), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(upstream), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    (upstream / "README.md").write_text("# upstream\n")
+    subprocess.run(["git", "-C", str(upstream), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(upstream), "commit", "-m", "init"],
+                   capture_output=True, check=True)
+    clone = parent / name
+    subprocess.run(["git", "clone", str(upstream), str(clone)],
+                   capture_output=True, check=True)
+    for cmd in [
+        ["git", "-C", str(clone), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(clone), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    return upstream, clone
+
+
+class TestDiscoverDrift:
+    """pickaxe.discover_remote_drift -- fetch + ahead/behind/dirty per repo."""
+
+    def test_no_remote_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")  # no origin_url
+        results = pickaxe.discover_remote_drift(str(root))
+        assert len(results) == 1
+        assert "no-remote" in results[0]["flags"]
+        assert results[0]["ahead"] == 0
+        assert results[0]["behind"] == 0
+
+    def test_clean_repo_no_flags(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["ahead"] == 0
+        assert repo["behind"] == 0
+        assert repo["dirty"] == 0
+        assert repo["flags"] == []
+
+    def test_push_needed_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        upstream, clone = _make_clone_pair(root, "repo-a")
+        # Add a local commit not yet pushed
+        (clone / "extra.txt").write_text("extra\n")
+        subprocess.run(["git", "-C", str(clone), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(clone), "commit", "-m", "local commit"],
+                       capture_output=True, check=True)
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["ahead"] == 1
+        assert "push-needed" in repo["flags"]
+
+    def test_behind_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        upstream, clone = _make_clone_pair(root, "repo-a")
+        # Add a commit to upstream (not yet fetched by clone)
+        (upstream / "new.txt").write_text("new\n")
+        subprocess.run(["git", "-C", str(upstream), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(upstream), "commit", "-m", "upstream commit"],
+                       capture_output=True, check=True)
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["behind"] == 1
+        assert "behind" in repo["flags"]
+
+    def test_uncommitted_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        # Add an untracked file to the clone
+        clone = root / "repo-a"
+        (clone / "dirty.txt").write_text("dirty\n")
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["dirty"] >= 1
+        assert "uncommitted" in repo["flags"]
+
+    def test_result_keys(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        results = pickaxe.discover_remote_drift(str(root))
+        assert len(results) == 1
+        for key in ("rel", "path", "remote", "branch", "ahead", "behind", "dirty", "flags"):
+            assert key in results[0], f"missing key: {key}"
+
+    def test_cli_returns_zero(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "drift", str(root)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_cli_json_format(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "drift", str(root), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        assert any(r["rel"] == "repo-a" for r in data)
 

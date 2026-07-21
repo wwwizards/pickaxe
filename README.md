@@ -1,8 +1,10 @@
-# pickaxe
+# PICKAXE
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Mine tool-worthy scripts from compound mono-repos. Inspect repo health. Analyze commit cadence.**
+> **Portable Independent Collaborative-Knowledge AjaX-Extender**
+
+**Mine tool-worthy scripts from compound mono-repos. Inspect repo health. Analyze commit cadence. Replicate knowledge across federated nodes — no message queues, no clusters, no containers.**
 
 Scans a workspace directory tree, scores each script by how "tool-worthy" it is (has a shebang, version header, purpose block, few git commits = buried in the wrong repo), and outputs a ranked report with suggested `git-filter-repo` extraction commands for anything with history worth preserving.
 
@@ -79,7 +81,31 @@ python pickaxe.py discover commit-trends --format json
 python pickaxe.py discover commit-trends --save
 ```
 
-### Extraction candidates — scan
+### Remote drift — `discover drift`
+
+`pickaxe discover drift` fetches all remotes and reports ahead/behind/dirty per repo — the AS-IS git health map across the entire workspace.
+
+```bash
+# Show all repos: ahead commits (push-needed), behind commits, uncommitted files
+python pickaxe.py discover drift ~/DATA/projects
+
+# From current directory
+python pickaxe.py discover drift .
+
+# Machine-readable output
+python pickaxe.py discover drift ~/DATA/projects --format json
+```
+
+Output columns:
+
+| Column | Meaning |
+|--------|---------|
+| `AHEAD` | Local commits not yet pushed to origin |
+| `BEHIND` | Remote commits not yet pulled |
+| `DIRTY` | Uncommitted modified/untracked files |
+| `FLAGS` | `push-needed` \| `behind` \| `uncommitted` \| `no-remote` \| `fetch-failed` |
+
+Repos flagged `no-remote` have no origin configured — they exist only on disk (and in any pickaxe backup).
 
 ```bash
 # Quick table scan — print ranked candidates to terminal
@@ -97,6 +123,50 @@ python pickaxe.py scan ~/DATA/projects --extensions .py .ps1
 # Dump everything regardless of score
 python pickaxe.py scan ~/DATA/projects --all
 ```
+
+### Backup & restore
+
+`pickaxe backup` snapshots every git repo under a root into a portable backup directory — safe to copy to OneDrive, a NAS, or any cloud storage.
+
+**What it creates:**
+
+```
+<dest>/
+  manifest.json          # repo inventory: paths, remotes, branches, bundle status
+  bundles/
+    root.bundle          # monorepo committed history
+    SOLUTIONS__...bundle # one bundle per discovered submodule/repo
+  working-tree/          # full file copy (no .git dirs) — captures uncommitted changes
+```
+
+```bash
+# Backup workspace root to a named snapshot dir
+python pickaxe.py backup ~/DATA/projects --to ~/backups/LW-260721
+
+# Bundles only — skip working-tree copy (faster; use when all changes are committed)
+python pickaxe.py backup ~/DATA/projects --to ~/backups/LW-260721 --skip-working-tree
+
+# JSON output (pipe into other tools)
+python pickaxe.py backup . --to ~/backups/LW-260721 --format json
+
+# Restore repos from a backup (git clone from each bundle, re-adds origin remote)
+python pickaxe.py restore ~/backups/LW-260721 --to ~/restored
+
+# Restore with JSON output to inspect results
+python pickaxe.py restore ~/backups/LW-260721 --to ~/restored --format json
+```
+
+**Restore behaviour:**
+
+| Status | Meaning |
+|---|---|
+| `ok` | Cloned from bundle; origin remote re-added if known |
+| `already_exists` | Target path exists — skipped (safe to re-run) |
+| `missing_bundle` | Bundle file absent from backup dir |
+| `clone_failed` | `git clone` returned non-zero |
+
+> **Tip:** For a pre-BIOS/pre-migration safety snapshot, combine backup with an OS-level copy:
+> `robocopy ~/DATA/projects ~/backups/LW-260721/working-tree /E /SL` captures symlinks that `shutil.copytree` may not preserve on all platforms.
 
 ---
 
@@ -182,10 +252,11 @@ The `AUTODOC:` field closes the loop — it tells pickaxe (and future readers) h
 - [x] `discover` — repo health map (path, remote, branch, flags)
 - [x] `diagnose` — single-repo health inspection
 - [x] `discover commit-trends` — weekly/daily/monthly cadence, marathon detection, date range, holiday annotation
-- [ ] `discover drift` — compare local inventory vs canonical GitHub set
+- [x] `backup` — bundle all repos + working-tree snapshot to portable dir; `manifest.json` inventory
+- [x] `restore` — restore repos from pickaxe backup; re-attaches origin remotes
+- [x] `discover drift` — fetch + ahead/behind/dirty per repo; flags push-needed/behind/uncommitted/no-remote
 - [ ] `deliver drift` — apply fixes from drift report
 - [ ] `--execute` — full git-filter-repo extraction pipeline
-- [ ] `--format json` for all subcommands (scan has it; others in progress)
 - [ ] GitHub Actions integration: run on PR to flag new tool-worthy scripts
 - [ ] Multi-repo index: build a searchable catalog across all miners
 

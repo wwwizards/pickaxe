@@ -1,14 +1,17 @@
-# Design: pickaxe
+# Design: PICKAXE
+
+> **Portable Independent Collaborative-Knowledge AjaX-Extender**
 
 ```
 # --------------------------------------------------------------------------
 # NOTES:    DESIGN.md
 # --------------------------------------------------------------------------
-# ABSTRACT: Architectural decisions for the pickaxe CLI. Records the
+# ABSTRACT: Architectural decisions for the PICKAXE CLI. Records the
 #     rationale for key design choices — what we decided, why, and what
 #     alternatives were rejected. Read before implementing new features.
+#     Acronym locked 2026-06-16. Release target: 2026-07-04 (Independence Day).
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
+# UPDATED:  260616 BY: Claude(Sonnet4.6)::Copilot::ai-labs.MATTHEW
 # VERSION:  0.2.0
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------

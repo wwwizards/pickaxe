@@ -33,7 +33,7 @@ DEFAULT_INPUT = os.path.join(
 )
 DEFAULT_OUTPUT = os.path.join(
     os.path.dirname(__file__),
-    '..', '..', '..', '..', '..', '.AI-TRAINING', 'mvsx-stories',
+    '..', '..', '..', '..', '..', '.AI-TRAINING', 'mvx-stories',
     '60601-GPU-Utilization-Optimization-Image-ComparisonChart.png'
 )
 

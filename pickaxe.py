@@ -16,25 +16,46 @@
 # UPDATED: 26-0603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
 # UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - commit_trends (discover commit-trends; --by week|day|month; --from/--to; --marathon-threshold; --holidays)
 # UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - scan: already-extracted annotation (PX-B3); discover --submodules-only (PX-B1)
-# VERSION: v0.3.4
+# UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - backup/restore (PX-B4): bundle+working-tree snapshot; manifest.json; restore from bundle
+# UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
+# VERSION: v0.3.6
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
 #
 # USAGE:
-#     python pickaxe.py [root_dir] [options]
+#     python pickaxe.py <command> [options]
 #
-# EXAMPLES:
-#     python pickaxe.py ~/DATA/projects
-#     python pickaxe.py ~/DATA/projects --min-score 2 --output pickaxe-report.md
-#     python pickaxe.py ~/DATA/projects --extensions .py .ps1 .sh
-#     python pickaxe.py ~/DATA/projects --dry-run --output extraction-plan.md
+# COMMANDS:
+#     scan      Score files as extraction candidates (version, commits, headers)
+#     discover  Repo health map | commit-trends | drift (planned)
+#     diagnose  Single-repo health inspection
+#     backup    Snapshot all repos (git bundles + working-tree) to a portable dir
+#     restore   Restore repos from a pickaxe backup manifest
+#
+# EXAMPLES — scan:
+#     python pickaxe.py scan ~/DATA/projects
+#     python pickaxe.py scan ~/DATA/projects --min-score 2 --output report.md
+#     python pickaxe.py scan ~/DATA/projects --extensions .py .ps1 .sh
+#
+# EXAMPLES — discover / diagnose:
+#     python pickaxe.py discover ~/DATA/projects
+#     python pickaxe.py discover commit-trends --by week
+#     python pickaxe.py diagnose ~/DATA/projects/my-tool
+#
+# EXAMPLES — backup / restore:
+#     python pickaxe.py backup ~/DATA/projects --to ~/backups/LW-260721
+#     python pickaxe.py backup ~/DATA/projects --to ~/backups/LW-260721 --skip-working-tree
+#     python pickaxe.py backup . --to ~/backups/LW-260721 --format json
+#     python pickaxe.py restore ~/backups/LW-260721 --to ~/restored
+#     python pickaxe.py restore ~/backups/LW-260721 --to ~/restored --format json
 # --------------------------------------------------------------------------
 
 import os
 import re
 import sys
 import json
+import shutil
 import argparse
 import subprocess
 import datetime
@@ -245,6 +266,67 @@ def discover(root):
             if '.git' in dirnames:
                 dirnames.remove('.git')
     return entries
+
+
+def discover_remote_drift(root):
+    """
+    Walk root for git repos, fetch each origin, and measure ahead/behind/dirty.
+    Returns list of dicts: {rel, path, remote, branch, ahead, behind, dirty, flags}
+    Repos without a remote are included with flags=['no-remote'].
+    flags may include: push-needed, behind, uncommitted, no-remote, fetch-failed
+    """
+    repos = discover(root)
+    results = []
+    for repo in repos:
+        path   = repo['path']
+        rel    = repo['rel']
+        remote = repo.get('remote') or ''
+        branch = repo.get('branch') or 'main'
+
+        entry = {
+            'rel':    rel,
+            'path':   path,
+            'remote': remote,
+            'branch': branch,
+            'ahead':  0,
+            'behind': 0,
+            'dirty':  0,
+            'flags':  [],
+        }
+
+        if not remote:
+            entry['flags'].append('no-remote')
+            results.append(entry)
+            continue
+
+        fetch = subprocess.run(
+            ['git', '-C', path, 'fetch', 'origin', '--quiet'],
+            capture_output=True, text=True)
+        if fetch.returncode != 0:
+            entry['flags'].append('fetch-failed')
+            results.append(entry)
+            continue
+
+        def _count(cmd):
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            return len([ln for ln in r.stdout.splitlines() if ln]) if r.returncode == 0 else 0
+
+        ahead  = _count(['git', '-C', path, 'log', f'origin/{branch}..HEAD', '--oneline'])
+        behind = _count(['git', '-C', path, 'log', f'HEAD..origin/{branch}', '--oneline'])
+        dirty  = _count(['git', '-C', path, 'status', '--porcelain'])
+
+        entry['ahead']  = ahead
+        entry['behind'] = behind
+        entry['dirty']  = dirty
+
+        if ahead  > 0: entry['flags'].append('push-needed')
+        if behind > 0: entry['flags'].append('behind')
+        if dirty  > 0 and ahead == 0 and behind == 0:
+            entry['flags'].append('uncommitted')
+
+        results.append(entry)
+
+    return results
 
 
 def extraction_script(git_root, file_path):
@@ -763,6 +845,163 @@ def _cmd_discover_commit_trends(args):
 
 
 # --------------------------------------------------------------------------
+# BACKUP / RESTORE  (5D safety — portable snapshots)
+# --------------------------------------------------------------------------
+
+_BACKUP_SKIP = {
+    '.git', '__pycache__', 'node_modules', '.venv', 'venv',
+    '.pytest_cache', '.mypy_cache', 'dist', 'build',
+}
+
+
+def _copy_working_tree(src, dest):
+    """
+    Copy working tree from src to dest, preserving symlinks but skipping
+    .git directories and common build/cache artifacts.
+    Uses dirs_exist_ok=True so it is safe to call on an existing dest (OneDrive
+    may hold locks that prevent rmtree on partially-synced trees).
+    Falls back to symlinks=False if symlink creation is not permitted (Windows
+    without Developer Mode).
+    """
+    def _ignore(directory, contents):
+        return [c for c in contents if c in _BACKUP_SKIP]
+
+    os.makedirs(dest, exist_ok=True)
+    try:
+        shutil.copytree(src, dest, symlinks=True, ignore=_ignore, dirs_exist_ok=True)
+    except (OSError, NotImplementedError):
+        shutil.copytree(src, dest, symlinks=False, ignore=_ignore, dirs_exist_ok=True)
+
+
+def backup_workspace(root, dest, skip_working_tree=False, force=False):
+    """
+    Snapshot all git repos under root to dest.
+
+    Creates:
+      <dest>/manifest.json        — repo inventory + metadata
+      <dest>/bundles/<name>.bundle — git bundle per discovered repo
+      <dest>/working-tree/         — full working-tree copy (no .git dirs)
+
+    Returns the manifest dict.
+    Raises FileExistsError if dest already contains a manifest.json or is
+    non-empty from a partial run, unless force=True.
+    """
+    root = os.path.abspath(root)
+    dest = os.path.abspath(dest)
+
+    manifest_path = os.path.join(dest, 'manifest.json')
+    if not force:
+        if os.path.isfile(manifest_path):
+            raise FileExistsError(
+                f'{manifest_path} already exists — remove it or use --force.'
+            )
+        # Guard against partial runs: non-empty dir with no manifest
+        if os.path.isdir(dest):
+            existing = [p for p in os.listdir(dest) if p not in ('bundles',)]
+            if existing:
+                raise FileExistsError(
+                    f'{dest} is non-empty (no manifest.json — partial backup?). '
+                    f'Remove it or use --force.'
+                )
+
+    bundles_dir = os.path.join(dest, 'bundles')
+    os.makedirs(bundles_dir, exist_ok=True)
+
+    entries = discover(root)
+    manifest = {
+        'pickaxe_version': '0.3.5',
+        'created': datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'root': root,
+        'repos': [],
+    }
+
+    for entry in entries:
+        rel = entry['rel']
+        # Build a filesystem-safe bundle name from the relative path
+        safe = rel.replace(os.sep, '__').replace('/', '__').lstrip('._') or 'root'
+        bundle_rel = os.path.join('bundles', f'{safe}.bundle')
+        bundle_abs = os.path.join(dest, bundle_rel)
+
+        r = subprocess.run(
+            ['git', '-C', entry['path'], 'bundle', 'create', bundle_abs, '--all'],
+            capture_output=True, text=True,
+        )
+        manifest['repos'].append({
+            'rel':       rel,
+            'path':      entry['path'],
+            'bundle':    bundle_rel,
+            'bundle_ok': r.returncode == 0,
+            'remote':    entry['remote'],
+            'branch':    entry['branch'],
+            'flags':     entry['flags'],
+        })
+
+    if not skip_working_tree:
+        wt_dest = os.path.join(dest, 'working-tree')
+        _copy_working_tree(root, wt_dest)
+        manifest['working_tree'] = 'working-tree'
+
+    with open(manifest_path, 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, indent=2)
+
+    return manifest
+
+
+def restore_workspace(backup, dest):
+    """
+    Restore repos from a pickaxe backup dir.
+
+    For each repo in manifest:
+      - git clone <bundle> → <dest>/<rel>
+      - re-add origin remote if known
+
+    Returns list of {rel, status} dicts.
+    status values: 'ok' | 'already_exists' | 'missing_bundle' | 'clone_failed'
+    Raises FileNotFoundError if backup/manifest.json is missing.
+    """
+    backup = os.path.abspath(backup)
+    dest   = os.path.abspath(dest)
+
+    manifest_path = os.path.join(backup, 'manifest.json')
+    if not os.path.isfile(manifest_path):
+        raise FileNotFoundError(f'No manifest.json found in: {backup}')
+
+    with open(manifest_path, encoding='utf-8') as f:
+        manifest = json.load(f)
+
+    results = []
+    for repo in manifest.get('repos', []):
+        rel    = repo['rel']
+        bundle = os.path.join(backup, repo['bundle'])
+        target = os.path.join(dest, rel)
+
+        if not os.path.isfile(bundle):
+            results.append({'rel': rel, 'status': 'missing_bundle'})
+            continue
+
+        if os.path.exists(target):
+            results.append({'rel': rel, 'status': 'already_exists'})
+            continue
+
+        os.makedirs(os.path.dirname(target) or dest, exist_ok=True)
+        r = subprocess.run(
+            ['git', 'clone', bundle, target],
+            capture_output=True, text=True,
+        )
+        status = 'ok' if r.returncode == 0 else 'clone_failed'
+
+        if status == 'ok' and repo.get('remote'):
+            subprocess.run(
+                ['git', '-C', target, 'remote', 'set-url', 'origin', repo['remote']],
+                capture_output=True,
+            )
+
+        results.append({'rel': rel, 'status': status})
+
+    return results
+
+
+# --------------------------------------------------------------------------
 # OUTPUT — discover / diagnose
 # --------------------------------------------------------------------------
 
@@ -788,6 +1027,20 @@ def render_diagnose_table(result):
     print(f"  flags     : {', '.join(result['flags'])}")
 
 
+def _render_drift_table(results):
+    """Print remote drift summary table to stdout."""
+    print(f"\n{'REPO':<22} {'AHEAD':>5} {'BEHIND':>6} {'DIRTY':>5}  {'FLAGS':<16}  REMOTE")
+    print(f"{'-'*22} {'-'*5} {'-'*6} {'-'*5}  {'-'*16}  {'-'*40}")
+    for r in results:
+        flags  = ','.join(r['flags']) if r['flags'] else ''
+        remote = r['remote'].replace('https://github.com/', 'gh:') if r['remote'] else '(none)'
+        print(f"{r['rel']:<22} {r['ahead']:>5} {r['behind']:>6} {r['dirty']:>5}  {flags:<16}  {remote}")
+    needs_action = [r for r in results if r['flags']]
+    if needs_action:
+        print(f"\n{len(needs_action)} repo(s) need attention: "
+              + ', '.join(r['rel'] for r in needs_action))
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -800,8 +1053,14 @@ def _cmd_discover(args):
         _cmd_discover_commit_trends(args)
         return
     if noun == 'drift':
-        print("[pickaxe discover drift] not yet implemented", file=sys.stderr)
-        sys.exit(1)
+        root = os.path.abspath(getattr(args, 'root_dir', None) or '.')
+        print(f'[pickaxe discover drift] scanning {root} ...', file=sys.stderr)
+        results = discover_remote_drift(root)
+        if args.format == 'json':
+            print(json.dumps(results, indent=2))
+        else:
+            _render_drift_table(results)
+        return
 
     # Default: repo health map. Treat noun as root_dir if it looks like a path.
     if noun and noun not in DISCOVER_NOUNS:
@@ -838,6 +1097,63 @@ def _cmd_diagnose(args):
         sessions_dir = os.path.join(path, '.pickaxe', 'SESSIONS')
         saved = _save_session_event('diagnose', path, _build_diagnose_summary(result), sessions_dir)
         print(f"[pickaxe] session event saved → {saved}", file=sys.stderr)
+
+
+def _render_backup_table(manifest, dest):
+    repos = manifest['repos']
+    print(f"\n{'STATUS':>8}  {'BUNDLED':>7}  REL")
+    print(f"{'-'*8}  {'-'*7}  {'-'*60}")
+    for r in repos:
+        status = 'ok' if r['bundle_ok'] else 'FAIL'
+        bundled = 'yes' if r['bundle_ok'] else 'no'
+        print(f"{status:>8}  {bundled:>7}  {r['rel']}")
+    ok = sum(1 for r in repos if r['bundle_ok'])
+    print(f"\n{ok}/{len(repos)} repo(s) bundled -> {dest}")
+    if manifest.get('working_tree'):
+        print(f"working-tree  -> {os.path.join(dest, manifest['working_tree'])}")
+
+
+def _render_restore_table(results):
+    print(f"\n{'STATUS':>14}  REL")
+    print(f"{'-'*14}  {'-'*60}")
+    for r in results:
+        print(f"{r['status']:>14}  {r['rel']}")
+    ok = sum(1 for r in results if r['status'] == 'ok')
+    print(f"\n{ok}/{len(results)} repo(s) restored.")
+
+
+def _cmd_backup(args):
+    root = os.path.abspath(getattr(args, 'root', None) or '.')
+    dest = os.path.abspath(args.dest)
+    print(f'[pickaxe backup] {root} -> {dest}', file=sys.stderr)
+    try:
+        manifest = backup_workspace(
+            root, dest,
+            skip_working_tree=getattr(args, 'skip_working_tree', False),
+            force=getattr(args, 'force', False),
+        )
+    except FileExistsError as exc:
+        print(f'ERROR: {exc}', file=sys.stderr)
+        sys.exit(1)
+    if args.format == 'json':
+        print(json.dumps(manifest, indent=2))
+    else:
+        _render_backup_table(manifest, dest)
+
+
+def _cmd_restore(args):
+    backup = os.path.abspath(getattr(args, 'backup', None) or '.')
+    dest   = os.path.abspath(args.dest)
+    print(f'[pickaxe restore] {backup} -> {dest}', file=sys.stderr)
+    try:
+        results = restore_workspace(backup, dest)
+    except FileNotFoundError as exc:
+        print(f'ERROR: {exc}', file=sys.stderr)
+        sys.exit(1)
+    if args.format == 'json':
+        print(json.dumps(results, indent=2))
+    else:
+        _render_restore_table(results)
 
 
 def _cmd_scan(args):
@@ -950,6 +1266,32 @@ def main():
     p_scan.add_argument('--save', action='store_true',
                          help='Append session event to {root}/.pickaxe/SESSIONS/')
     p_scan.set_defaults(func=_cmd_scan)
+
+    # --- backup ---
+    p_backup = sub.add_parser(
+        'backup',
+        help='Snapshot all repos (bundles + working-tree) to a portable backup dir',
+    )
+    p_backup.add_argument('root', nargs='?', default='.', help='Workspace root (default: cwd)')
+    p_backup.add_argument('--to', required=True, dest='dest', metavar='DEST',
+                          help='Backup destination directory')
+    p_backup.add_argument('--skip-working-tree', action='store_true', dest='skip_working_tree',
+                          help='Bundle repos only — skip working-tree copy')
+    p_backup.add_argument('--force', action='store_true',
+                          help='Overwrite an existing (partial) backup dest')
+    p_backup.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_backup.set_defaults(func=_cmd_backup)
+
+    # --- restore ---
+    p_restore = sub.add_parser(
+        'restore',
+        help='Restore repos from a pickaxe backup (reads manifest.json)',
+    )
+    p_restore.add_argument('backup', nargs='?', default='.', help='Backup dir containing manifest.json')
+    p_restore.add_argument('--to', required=True, dest='dest', metavar='DEST',
+                           help='Restore destination directory')
+    p_restore.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_restore.set_defaults(func=_cmd_restore)
 
     args = parser.parse_args()
 

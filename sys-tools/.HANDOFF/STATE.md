@@ -19,7 +19,7 @@
 - Moved from `etl-tools/` to `sys-tools/` for independent evolution
 - `.HANDOFF/` scaffolded: DESIGN.md, STATE.md, ROADMAP.md
 - Baseline probe captured: `.AI-TRAINING/probes.json` (label: baseline-pre-changes)
-- GPU optimization MVx documented: `.AI-TRAINING/mvsx-stories/260601-GPU-Utilization-Optimization.md`
+- GPU optimization MVx documented: `.AI-TRAINING/mvx-stories/260601-GPU-Utilization-Optimization.md`
 
 ---
 
