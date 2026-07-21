@@ -862,15 +862,35 @@ def _copy_working_tree(src, dest):
     may hold locks that prevent rmtree on partially-synced trees).
     Falls back to symlinks=False if symlink creation is not permitted (Windows
     without Developer Mode).
+    Skips individual files that fail due to MAX_PATH (WinError 3) or file
+    locks (WinError 32) — warns to stderr and continues rather than crashing.
     """
+    skipped = []
+
     def _ignore(directory, contents):
         return [c for c in contents if c in _BACKUP_SKIP]
 
+    def _safe_copy(src_path, dst_path, **kwargs):
+        try:
+            shutil.copy2(src_path, dst_path)
+        except OSError as exc:
+            skipped.append((src_path, str(exc)))
+
     os.makedirs(dest, exist_ok=True)
     try:
-        shutil.copytree(src, dest, symlinks=True, ignore=_ignore, dirs_exist_ok=True)
+        shutil.copytree(src, dest, symlinks=True, ignore=_ignore,
+                        copy_function=_safe_copy, dirs_exist_ok=True)
     except (OSError, NotImplementedError):
-        shutil.copytree(src, dest, symlinks=False, ignore=_ignore, dirs_exist_ok=True)
+        shutil.copytree(src, dest, symlinks=False, ignore=_ignore,
+                        copy_function=_safe_copy, dirs_exist_ok=True)
+
+    if skipped:
+        print(f"[pickaxe] working-tree: {len(skipped)} file(s) skipped (locked or path too long):",
+              file=sys.stderr)
+        for path, reason in skipped[:5]:
+            print(f"  SKIP {os.path.basename(path)}: {reason}", file=sys.stderr)
+        if len(skipped) > 5:
+            print(f"  ... and {len(skipped) - 5} more", file=sys.stderr)
 
 
 def backup_workspace(root, dest, skip_working_tree=False, force=False):
