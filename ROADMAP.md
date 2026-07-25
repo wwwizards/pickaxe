@@ -1,5 +1,19 @@
 # pickaxe — Roadmap
 
+```
+# --------------------------------------------------------------------------
+# NOTES:    ROADMAP.md
+# --------------------------------------------------------------------------
+# ABSTRACT: AS-IS capabilities and staged delivery plan for the pickaxe CLI.
+# CREATED:  260612 BY: LogicWizards.NYC
+# UPDATED:  260725 BY: GitHub Copilot
+# ARCHITECT: Joe Negron -- LogicWizards.NYC
+# TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
+# VERSION:  0.3.0
+# STAGE:    ACTIVE
+# --------------------------------------------------------------------------
+```
+
 > AS-IS vs TO-BE. What it does today vs where it's going.
 
 ---
@@ -28,18 +42,18 @@ pickaxe is a **discovery and scoring** tool. It does not touch git or GitHub —
 
 **Gap summary:**
 
-| Capability | v0.1 |
-|---|---|
-| Find + score candidates | ✅ |
-| Suggest extraction command | ✅ (prints it) |
-| Execute extraction | ❌ |
-| Subdir extraction (not just single files) | ❌ |
-| Preserve branches / tags / releases | ❌ |
-| Create remote repo | ❌ |
-| Push extracted repo | ❌ |
-| Dry-run mode | ❌ |
-| Chain-of-custody audit trail (`.pickaxe/`) | ❌ |
-| Detect + carry AI instruction files | ❌ |
+| Capability                                 | v0.1          |
+|--------------------------------------------|---------------|
+| Find + score candidates                    | ✅             |
+| Suggest extraction command                 | ✅ (prints it) |
+| Execute extraction                         | ❌             |
+| Subdir extraction (not just single files)  | ❌             |
+| Preserve branches / tags / releases        | ❌             |
+| Create remote repo                         | ❌             |
+| Push extracted repo                        | ❌             |
+| Dry-run mode                               | ❌             |
+| Chain-of-custody audit trail (`.pickaxe/`) | ❌             |
+| Detect + carry AI instruction files        | ❌             |
 
 ---
 
@@ -177,6 +191,7 @@ Use this as the live execution sheet for development and handoff continuity.
 Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 
 - [x] `pickaxe diagnose` — identifies repo state anomalies (missing `.git`, missing `origin`, stripped `.git/config`)
+- [ ] `pickaxe diagnose` venv/dependency-tree detection — scan workspace for common large untracked dependency trees (`.venv/`, `venv/`, `env/`, `node_modules/`, `__pypackages__/`) that are absent from the nearest VS Code `settings.json` `files.watcherExclude`. Emit a `venv_unexcluded` warning flag with directory name and file count. Rationale: an unexcluded `.venv` caused 28,370 of 30,161 workspace files (94%) on this machine, triggering Win32 `ReadDirectoryChangesW` buffer overflow, Copilot RAG thrashing via `rg.exe`, and an extension host at 3,162 MB. A one-line `settings.json` entry eliminates the issue entirely. Docs: `.AI-TRAINING/GPU-VsCode-TroublleShooting-101.md`.
 - [x] `pickaxe discover` — emits local repo map (path, remote, branch, health flags); default output `table`, `--format json` for piping
 - [x] `pickaxe discover commit-trends` — weekly (or daily/monthly) commit cadence for any repo; marathon detection (>2 commits/week by default, configurable); `--from`/`--to` date range; `--by week|day|month`; `--repo <path>` (defaults to cwd git root, works cross-repo including external monorepos); outputs table with week label, count, marathon flag; US holiday annotation opt-in (`--holidays us`)
 - [ ] `pickaxe deliver dirs` — clone missing repos and restore missing remotes from a canonical manifest (`repos.manifest.json`)
@@ -195,26 +210,18 @@ Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 
 ### Track D — Collaborate (git-passthrough with submodule intelligence)
 
-The vision: `pickaxe <verb> <dotted-name>` mirrors git's collaborate surface but is submodule-aware
-by default. Dotted names (`tools.modules.psst`, `ai-labs`) resolve to local paths + remotes via the
-`.ai-labs.tools.yaml` manifest. No more manual sub → parent pointer → grandparent chains.
+The vision: `pickaxe <verb> <dotted-name>` mirrors git's collaborate surface but is submodule-aware by default. Dotted names (`tools.modules.psst`, `ai-labs`) resolve to local paths + remotes via the `.ai-labs.tools.yaml` manifest. No more manual sub → parent pointer → grandparent chains.
 
-**Why this matters:** every LogicWizards monorepo+submodule push today requires 4-6 manual git
-commands across 2-3 repos, in the right order, with a STATE.md update in between. One wrong step
-(push parent before sub, forget to bump pointer) breaks the next agent's cold-start. `pickaxe push`
-eliminates the ordering problem entirely.
+**Why this matters:** every LogicWizards monorepo+submodule push today requires 4-6 manual git commands across 2-3 repos, in the right order, with a STATE.md update in between. One wrong step (push parent before sub, forget to bump pointer) breaks the next agent's cold-start. `pickaxe push` eliminates the ordering problem entirely.
 
 Command surface (mirrors `git help` collaborate section):
 
 - [ ] `pickaxe fetch [<name>]` — query each `remote.url` for latest tag via `git ls-remote` or GH API;
-  write `remote.version` back to `.ai-labs.tools.yaml`; output drift table (HERE vs THERE); feeds
-  the Locations column in the MD matrix. No writes to working tree.
+write `remote.version` back to `.ai-labs.tools.yaml`; output drift table (HERE vs THERE); feeds the Locations column in the MD matrix. No writes to working tree.
 
 ### MQL — Manifest Query Language + HOBOTS Delegation Surface (design note, 260613JN)
 
-The full vision for `pickaxe fetch` is not a fixed hardcoded command — it is the first expression
-of a manifest query language (MQL) where field selectors walk the YAML graph and HOBOTS personas
-execute the side-effecting work asynchronously and return structured data.
+The full vision for `pickaxe fetch` is not a fixed hardcoded command — it is the first expression of a manifest query language (MQL) where field selectors walk the YAML graph and HOBOTS personas execute the side-effecting work asynchronously and return structured data.
 
 **Syntax:**
 ```
@@ -228,13 +235,11 @@ pickaxe MATT seek *.remote.version as json
 
 Breaking it down:
 - `MATT` — the worker-bot persona (HOBOTS SAK: M=Matt, the task executor). Any registered persona
-  from `.ai-labs.tools.yaml` or the persona registry can be substituted. `SOL` = analyst,
-  `TOTO` = watchdog/validator.
+from `.ai-labs.tools.yaml` or the persona registry can be substituted. `SOL` = analyst, `TOTO` = watchdog/validator.
 - `seek` — SAK verb (S=Seek: discovery/collection, no side effects). `ask` = query/analyze,
-  `knock` = act/mutate. Maps directly to the HOBOTS Seek-Ask-Knock protocol.
+`knock` = act/mutate. Maps directly to the HOBOTS Seek-Ask-Knock protocol.
 - `*.remote.version` — glob-style field path into the YAML manifest. `*` = all top-level nodes,
-  `.remote.version` = field traversal. Full XPath-like variants: `tools.*.status`,
-  `**.tags`, `**.remote[public=true].url`.
+`.remote.version` = field traversal. Full XPath-like variants: `tools.*.status`, `**.tags`, `**.remote[public=true].url`.
 - `as json` — output format: `json` | `table` | `yaml` | `md`. Default: `table`.
 
 **What MATT does on `seek *.remote.version`:**
@@ -244,11 +249,7 @@ Breaking it down:
 4. Return JSON: `{ "ai-labs": { "here": "0.1.0", "there": "0.1.3" }, "pickaxe": { ... } }`
 5. Pickaxe receives the JSON, writes `remote.version:` into YAML, regenerates MD
 
-**Why this matters (agent-to-agent pattern):**
-MATT executes the blocking network calls; pickaxe stays non-blocking. The `as json` contract
-is the handoff format — AJAX-style: MATT goes away, returns structured data, pickaxe applies
-it. Any AI agent running `pickaxe MATT seek ... as json` gets a self-updating manifest without
-needing to know git ls-remote syntax or GitHub API endpoints.
+**Why this matters (agent-to-agent pattern):** MATT executes the blocking network calls; pickaxe stays non-blocking. The `as json` contract is the handoff format — AJAX-style: MATT goes away, returns structured data, pickaxe applies it. Any AI agent running `pickaxe MATT seek ... as json` gets a self-updating manifest without needing to know git ls-remote syntax or GitHub API endpoints.
 
 **MQL field selector rules (draft):**
 - `*` — all direct PROJECT nodes
@@ -266,11 +267,9 @@ pickaxe TOTO seek **.version as json                   # all HERE versions for d
 pickaxe MATT seek tools.*.related.siblings as yaml     # a2m8 sibling graph
 ```
 
-**Milestone:** v0.8 — first MQL query (`*.remote.version`) must round-trip: seek → json → YAML
-write → MD regenerate → drift visible in Locations column.
+**Milestone:** v0.8 — first MQL query (`*.remote.version`) must round-trip: seek → json → YAML write → MD regenerate → drift visible in Locations column.
 - [ ] `pickaxe pull <name>` — pull the named submodule; update parent pointer commit; surface what
-  landed (auto-runs the AGENTS.md 5-step read-order: STATE.md, latest handoff JSON, git log,
-  AGENTS.md, then stops). Enforces the "PULL BEFORE PUSH" hard gate from AGENTS.md.
+landed (auto-runs the AGENTS.md 5-step read-order: STATE.md, latest handoff JSON, git log, AGENTS.md, then stops). Enforces the "PULL BEFORE PUSH" hard gate from AGENTS.md.
 - [ ] `pickaxe push <name>` — the crown jewel. Knows the full chain:
   - **who** — `remote.url` from manifest
   - **what** — `git status` in the sub (refuses to push with dirty tree unless `--force`)
@@ -280,10 +279,10 @@ write → MD regenerate → drift visible in Locations column.
     push sub → bump parent pointer → push parent(s) → optionally recurse to grandparent
   - Dry-run by default; `--execute` to run. `--no-parent` skips pointer bump.
 - [ ] `pickaxe status [<name>]` — cross-repo drift summary: version skew, uncommitted changes,
-  unpushed commits, pointer out of sync. One-liner per tool, color-coded.
+unpushed commits, pointer out of sync. One-liner per tool, color-coded.
 - [ ] `pickaxe log <name>` — `git log` for a tool by dotted name; no path-hunting required.
 - [ ] `pickaxe <verb> <name>` passthrough — any unrecognized verb is forwarded:
-  `git -C <path-from-manifest> <verb>`. Makes all `git` muscle memory work on tool names.
+`git -C <path-from-manifest> <verb>`. Makes all `git` muscle memory work on tool names.
 
 Foundational dependencies:
 - `.ai-labs.tools.yaml` `remote.url` field — done (v0.2 schema)
@@ -292,21 +291,22 @@ Foundational dependencies:
 
 ### Track E — Manifest management + workspace sync
 
-The YAML is the source of truth. The MD companion is the human-readable view. The `.AI-TRAINING/` folder is the machine-local override layer. Track E keeps all three in sync.
+The YAML is the source of truth. Markdown indexes and active-context files are generated projections and never write back to YAML. `.AI-TRAINING/` artifacts route to the nearest owning repository or subtree; the workspace root is reserved for genuinely workspace-global material. The normative implementation contract is [`.HANDOFF/AI-TRAINING-MANIFEST.md`](.HANDOFF/AI-TRAINING-MANIFEST.md).
 
 **`pickaxe discover tools`** — YAML → MD manifest generation:
 
 - [ ] `pickaxe discover tools [--write]` — read `.ai-labs.tools.yaml`, emit `.ai-labs.tools.md` companion (Locations/Actions matrix, hex status colors, HERE/THERE drift column)
 - [ ] `pickaxe discover tools --diff` — show delta between current YAML and on-disk MD; non-zero exit if drift detected (CI-safe)
-- [ ] `pickaxe discover tools --sync` — back-propagate manual MD edits to YAML source (round-trip fidelity)
+- [ ] `pickaxe discover tools --sync` — regenerate projections from YAML and report manual projection drift; never back-propagate Markdown edits
 - [ ] `pickaxe discover tools --graph` — emit DOT/mermaid from `related:` edges for visualization
 
-**`.AI-TRAINING/` workspace fork** — any peer node (Fordham, client, second machine) can fork the
-tools manifest locally, override HERE paths and implemented tool subset, and detect upstream drift:
+**`.AI-TRAINING/` owner-local fork** — any peer node can fork the tools manifest at its nearest ownership boundary, override HERE paths and implemented tool subset, and detect upstream drift:
 
-- [ ] `.AI-TRAINING/tools.yaml` — local fork seeded from `ai-labs/.ai-labs.tools.yaml`; HERE fields remapped to local paths; unused tools removed or marked `status: not-implemented`
-- [ ] `.AI-TRAINING/.sync-ref` — tracks last-synced ai-labs SHA + workspace node identity; written by `pickaxe sync`
-- [ ] `pickaxe sync [ai-labs]` — compare `.sync-ref` SHA to current ai-labs HEAD; emit `DELTA.md` listing: new upstream tools, modified tool entries with local overrides, sub-project git status; update `.sync-ref`
+- [ ] `.AI-TRAINING/tools.yaml` — owner-local fork seeded from `ai-labs/.ai-labs.tools.yaml`; HERE fields remapped to local paths; unused tools use an explicit lifecycle state
+- [ ] `.AI-TRAINING/.sync-ref` — tracks last-synced ai-labs SHA, content hashes, and node identity; written by `pickaxe sync`
+- [ ] `pickaxe sync [ai-labs]` — compare UUID plus content hash and lineage; emit `DELTA.md` for upstream changes and local overrides; update `.sync-ref`
+- [ ] `pickaxe context resolve` — apply nearest-owner precedence and lifecycle filters, then generate a bounded active-context view
+- [ ] `pickaxe training classify|promote|archive` — transition manifest lifecycle explicitly; T4/T5 promotion requires sanitization and user approval
 - [ ] `pickaxe discover tools --here <path>` — generate MD with HERE remapped to `<path>` (supports fork init from upstream YAML without manual edits)
 
 Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute or resolvable from workspace root for HERE detection to work across machines.
@@ -319,7 +319,7 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 - [ ] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state
 - [ ] `v0.6` done: `pickaxe push <name>` completes sub → parent chain without manual git steps
 - [ ] `v0.8` done: `pickaxe fetch` populates `remote.version` and drift table is live
-- [ ] `v0.9` done: `pickaxe discover tools` round-trips YAML ↔ MD and `pickaxe sync` emits DELTA.md
+- [ ] `v0.9` done: `pickaxe discover tools` generates deterministic Markdown from YAML, `pickaxe context resolve` excludes inactive evidence, and `pickaxe sync` emits `DELTA.md`
 - [ ] `v1.0` done: context-oracle flow can answer "do I need to build this?" with provenance-backed evidence
 
 ---
@@ -400,4 +400,4 @@ v0.2 and v0.3 (extraction, clustering) remain valid — they are the *foundation
 
 ---
 
-*Roadmap authored 26-0518. North Star added 26-0526. Track D (Collaborate/MQL) added 26-0613. Track E (Manifest/Workspace Sync) added 260714.* *Reference session: [HANDOFF.interrim-260518JN-Miners.md](../../projects/automation/AAP-NorthStar-Roadmap/HANDOFF.interrim-260518JN-Miners.md)*
+*Roadmap authored 26-0518. North Star added 26-0526. Track D (Collaborate/MQL) added 26-0613. Track E (Manifest/Workspace Sync) added 260714. Historical reference session: `HANDOFF.interrim-260518JN-Miners.md` (artifact no longer present in the workspace).*

@@ -4,29 +4,51 @@
 # --------------------------------------------------------------------------
 # NOTES:    STATE.md
 # --------------------------------------------------------------------------
-# ABSTRACT: Live state of the pickaxe repo. Current version, open blockers,
-#     active backlog. Updated at each session close.
+# ABSTRACT: Live state of the pickaxe repository, including shipped commands,
+#           active design contracts, blockers, and next implementation work.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260614 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# VERSION:  0.3.3
+# UPDATED:  260725 BY: GitHub Copilot
+# ARCHITECT: JN (Joe Negron -- LogicWizards.NYC)
+# TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
+# VERSION:  0.3.4
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
 
-**Last updated:** 260615
+**Last updated:** 2026-07-25
 **Current version:** v0.3.4
 
 ------------------------------
 
 ## Snapshot
 
-- Phase: v0.3.4 — already_extracted annotation (PX-B3) + --submodules-only (PX-B1) + --format json ✅ confirmed shipped
-- Status: active
+- Shipped CLI remains v0.3.4; no command implementation changed in this session.
+- [AI Training Manifest Contract](AI-TRAINING-MANIFEST.md) v0.1.0 is the canonical design for nearest-owner routing, active-context resolution, evidence isolation, and governed promotion.
+- Pickaxe is the sole Federation resolver, classifier, synchronizer, and promoter. ai-labs owns protocol and promotion targets; ai-labs-toolkit may consume output but does not duplicate traversal or classification.
+- The contract is design-only. `pickaxe context discover|route|resolve|check|promote` are not implemented yet.
+- Parent-monorepo pointer updates are intentionally deferred because other sessions have staged parent work.
+
+## Next actions
+
+1. Inventory current root `.AI-TRAINING/` artifacts without moving files.
+2. Implement the read-only `pickaxe context discover <path>` slice with focused tests.
+3. Implement `pickaxe context route <artifact>` using deepest-applicable-owner resolution.
+4. Present the generated routing plan for human approval before any `git mv` or promotion.
+
+## Current blockers
+
+- No implementation blocker for the first read-only slice.
+- Parent pointer update and parent handoff are deferred to the coordinating monorepo session.
+- Federation implementation remains pinned until the Wizard explicitly names the first MVx.
+
+------------------------------
+
+## Shipped baseline
 
 ## What shipped in v0.3.4 (260615)
 
 - `scan()` — `already_extracted` field on every candidate; non-null when file lives in a
-  different git root than the scan root (annotates `[extracted → <remote>]` in table + JSON)
+different git root than the scan root (annotates `[extracted → <remote>]` in table + JSON)
 - `_get_remote_url(path)` helper — returns origin URL for any git repo path
 - `render_table()` — NOTE column added; shows `already_extracted` annotation
 - `_cmd_scan` JSON output — `already_extracted` field included
@@ -123,32 +145,31 @@ Track B continued — `discover drift` + `deliver dirs` (manifest-driven). Track
 ### Gitlink blind-spot fix (root cause: `os.path.isdir('.git')` fails for submodule worktrees)
 
 - `_resolve_git_dir(path)` — new canonical helper; handles both `.git`-as-dir (normal repo)
-  and `.git`-as-file (submodule worktree gitlink, format: `gitdir: <relative-path>`).
-  All git-touching code goes through this single resolver.
+and `.git`-as-file (submodule worktree gitlink, format: `gitdir: <relative-path>`). All git-touching code goes through this single resolver.
 - `find_git_root()` — updated to accept gitlink files
 - `_get_branch()` — uses `_resolve_git_dir` for HEAD resolution
 - `diagnose()` — reads config from resolved gitdir; new `submodule` flag when gitlink detected
 - `discover()` — accepts `isfile` for `.git` marker in addition to `isdir`
 - `health_ok` logic changed: `flags == ['ok']` → `health['has_git'] and health['has_origin']`
-  so submodules with valid origin are correctly reported as healthy (not WARN)
+so submodules with valid origin are correctly reported as healthy (not WARN)
 - `test_pickaxe.py` — 7 new gitlink tests (4 diagnose + 3 discover); `_make_submodule_repo()`
-  helper fixture added; `repo_with_origin` fixture restored. **48/48 passed.**
+helper fixture added; `repo_with_origin` fixture restored. **48/48 passed.**
 
 ### Verified in production
 - `pickaxe discover SIDE-PROJECTS --format table` — ipscan now appears with `submodule` flag
-  (was silently missing before v0.3.2 due to gitlink blind-spot)
+(was silently missing before v0.3.2 due to gitlink blind-spot)
 
 ## What was learned (R&D input for pickaxe roadmap)
 
 - Git submodule worktrees have `.git` as a **file**, not a directory. Content: `gitdir: <rel-path>`
-  pointing into `.git/modules/<name>/` in the parent repo's store.
+pointing into `.git/modules/<name>/` in the parent repo's store.
 - `os.path.isdir('.git')` is the wrong primitive for "is this a git repo". Use `_resolve_git_dir`.
 - The correct test for "is this a submodule worktree" is: `.git` exists AND is a file AND
-  starts with `gitdir:`.
+starts with `gitdir:`.
 - Submodules in LogicWizards monorepo (registered in `.gitmodules`): `ipscan`, `ai-labs`,
-  `pickaxe`, `psst`, `psstel`.
+`pickaxe`, `psst`, `psstel`.
 - Orphaned loose repos (have `.git` dirs but NOT in `.gitmodules`): `clipd`, `redact`.
-  These need to either be registered as submodules or given their own proper remotes.
+These need to either be registered as submodules or given their own proper remotes.
 
 ## Previous session (v0.2.0 → v0.3.1)
 
@@ -161,30 +182,23 @@ Track B continued — `discover drift` + `deliver dirs` (manifest-driven). Track
 
 ## Current focus
 
-Track C (Submodule Hygiene) — consistent submodule workflow for LogicWizards mono-repo
-so each subproject can have its own remote & upstream.
+Track C (Submodule Hygiene) — consistent submodule workflow for LogicWizards mono-repo so each subproject can have its own remote & upstream.
 
 ## Next 3 actions
 
 1. **Address orphaned repos** — `clipd` and `redact` have `.git` dirs but are NOT in
-   `.gitmodules`. Options: (a) register as submodules, (b) give own remotes and document
-   as "sibling repos, not submodules". Design decision needed before implementing.
+`.gitmodules`. Options: (a) register as submodules, (b) give own remotes and document as "sibling repos, not submodules". Design decision needed before implementing.
 2. **Submodule hygiene template** — pre-commit hook (clean working tree in submodule),
-   pre-push hook (verify submodule commits exist on remote). Use `.githooks/` committed
-   to the monorepo (Option B). This feeds `pickaxe design` + `pickaxe deliver` phases.
+pre-push hook (verify submodule commits exist on remote). Use `.githooks/` committed to the monorepo (Option B). This feeds `pickaxe design` + `pickaxe deliver` phases.
 3. **ROADMAP Track C entry** — gitlink support + submodule workflow template warrants its
-   own track. User noted: "it pro'ly warrants at least one MVx & should feed a case study."
+own track. User noted: "it pro'ly warrants at least one MVx & should feed a case study."
 
 ## Risks / blockers
 
 - `clipd` and `redact` are orphaned (have `.git` dirs, no `.gitmodules` entry, no
-  `wwwizards` GitHub remote confirmed). Resolution needed before hook template can be
-  applied uniformly to all 7 repos in SIDE-PROJECTS.
+`wwwizards` GitHub remote confirmed). Resolution needed before hook template can be applied uniformly to all 7 repos in SIDE-PROJECTS.
 - No `.githooks/` template exists yet — blocks enforcement of submodule hygiene policy.
 
 ## Handoff note
 
-48/48 pytest green. Run `python -m pytest test_pickaxe.py -v` to validate.
-Run `python pickaxe.py discover SOLUTIONS/DevOps/SIDE-PROJECTS --format table` to see
-all 7 repos including ipscan with `submodule` flag.
-See `.HANDOFF/DESIGN.md` for full 5D command surface. pytest required (`python -m pip install pytest`).
+48/48 pytest green. Run `python -m pytest test_pickaxe.py -v` to validate. Run `python pickaxe.py discover SOLUTIONS/DevOps/SIDE-PROJECTS --format table` to see all 7 repos including ipscan with `submodule` flag. See `.HANDOFF/DESIGN.md` for full 5D command surface. pytest required (`python -m pip install pytest`).

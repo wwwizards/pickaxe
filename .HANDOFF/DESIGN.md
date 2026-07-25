@@ -11,8 +11,10 @@
 #     alternatives were rejected. Read before implementing new features.
 #     Acronym locked 2026-06-16. Release target: 2026-07-04 (Independence Day).
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260616 BY: Claude(Sonnet4.6)::Copilot::ai-labs.MATTHEW
-# VERSION:  0.2.0
+# UPDATED:  260725 BY: GitHub Copilot
+# ARCHITECT: SOLOMON
+# TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
+# VERSION:  0.3.0
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -101,12 +103,7 @@ pickaxe document [session|handoff|report|runbook]
 
 ### Prior command names (superseded)
 
-`pickaxe doctor` → `pickaxe diagnose`
-`pickaxe inventory` → `pickaxe discover`
-`pickaxe hydrate` → `pickaxe deliver dirs` (or `deliver drift`)
-`pickaxe drift` → `pickaxe discover drift` (read) + `pickaxe deliver drift` (fix)
-`pickaxe provision` → `pickaxe deliver docs`
-`pickaxe report` → `pickaxe document report`
+`pickaxe doctor` → `pickaxe diagnose` `pickaxe inventory` → `pickaxe discover` `pickaxe hydrate` → `pickaxe deliver dirs` (or `deliver drift`) `pickaxe drift` → `pickaxe discover drift` (read) + `pickaxe deliver drift` (fix) `pickaxe provision` → `pickaxe deliver docs` `pickaxe report` → `pickaxe document report`
 
 ### Design guardrails
 
@@ -207,7 +204,15 @@ Federation FEATURE.md defines: L0=ai-labs SoT, L1=published defaults, L2=workspa
 
 ## D-12: T0 emit on every workspace init/split (260612)
 
-Every `pickaxe workspace init` and `pickaxe workspace split` invocation must write a structured record into the target workspace's `.AI-TRAINING/` directory under the F6 dotted namespace. This makes every scaffold/split a traceable provenance event — consistent with D-07 (session log as training data) and D-06 (lineage in STATE.md). The F6 namespace format: `LIGHTBULB-LOG.<stratum>.<org>.<project>.<target>.<verb>.md`.
+Every `pickaxe workspace init` and `pickaxe workspace split` invocation must write a structured record into the nearest owning workspace's `.AI-TRAINING/` directory under the F6 dotted namespace. This makes every scaffold/split a traceable provenance event — consistent with D-07 (session log as training data) and D-06 (lineage in STATE.md). The F6 namespace format: `LIGHTBULB-LOG.<stratum>.<org>.<project>.<target>.<verb>.md`.
+
+---
+
+## D-13: Active context and historical evidence are separate planes (260725)
+
+[`AI-TRAINING-MANIFEST.md`](AI-TRAINING-MANIFEST.md) is the canonical pickaxe implementation contract for nearest-owner routing, UUID-plus-content-hash identity, lifecycle states, deterministic precedence, and generated active-context views. YAML is authoritative; Markdown is a generated projection. Normal ingestion loads only resolved active/default entries. Archived, quarantined, retracted, candidate, and evidence entries remain queryable but never enter default context merely because they still exist on disk.
+
+Git preserves retired content history. A retained evidence artifact must be represented as evidence or archive state, not as an obsolete full decision with a supersession banner in the active plane.
 
 
 ### Layer 1: Discovery
@@ -288,12 +293,7 @@ pickaxe document [session|handoff|report|runbook]
 
 ## Prior command names (superseded)
 
-`pickaxe doctor` → `pickaxe diagnose`
-`pickaxe inventory` → `pickaxe discover`
-`pickaxe hydrate` → `pickaxe deliver dirs` (or `deliver drift`)
-`pickaxe drift` → `pickaxe discover drift` (read) + `pickaxe deliver drift` (fix)
-`pickaxe provision` → `pickaxe deliver docs`
-`pickaxe report` → `pickaxe document report`
+`pickaxe doctor` → `pickaxe diagnose` `pickaxe inventory` → `pickaxe discover` `pickaxe hydrate` → `pickaxe deliver dirs` (or `deliver drift`) `pickaxe drift` → `pickaxe discover drift` (read) + `pickaxe deliver drift` (fix) `pickaxe provision` → `pickaxe deliver docs` `pickaxe report` → `pickaxe document report`
 
 ## Design guardrails
 
