@@ -1,0 +1,5 @@
+docs(state): remove redundant body version metadata
+
+Keep version and update metadata in the mandatory front-loaded header,
+which remains the authoritative state-file contract. Remove duplicate
+body fields that could drift independently.
