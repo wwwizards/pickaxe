@@ -7,6 +7,10 @@ __pycache__/
 # pickaxe session data (workspace-specific, lives in the managed repo)
 .pickaxe/
 
+# Scratch/POC sandbox — copies used to prototype against without touching
+# canonical .HANDOFF/ content (see .AI-TRAINING/mvx-stories rollup discovery)
+.sandbox/
+
 # macOS metadata garbage
 ._*
 .DS_Store

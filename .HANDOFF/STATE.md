@@ -7,10 +7,11 @@
 # ABSTRACT: Live state of the pickaxe repository, including shipped commands,
 #           active design contracts, blockers, and next implementation work.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260725 BY: GitHub Copilot
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: JN (Joe Negron -- LogicWizards.NYC)
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.4
+# VERSION:  0.3.5  (this doc's own revision counter — NOT the CLI version,
+#           currently v0.3.6 per ../ROADMAP.md)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -32,12 +33,38 @@
 2. Implement the read-only `pickaxe context discover <path>` slice with focused tests.
 3. Implement `pickaxe context route <artifact>` using deepest-applicable-owner resolution.
 4. Present the generated routing plan for human approval before any `git mv` or promotion.
+5. `handoff-rollup` POC in progress against `.sandbox/rollup-poc-260729/STATE.md` (gitignored copy, not this live file) — design + phased plan: [260728-Root-STATE-Rollup-Automation-Discovery](../../../../../.AI-TRAINING/mvx-stories/260728-Root-STATE-Rollup-Automation-Discovery.md). Not Federation-gated (Track B); unblocked now.
 
 ## Current blockers
 
 - No implementation blocker for the first read-only slice.
 - Parent pointer update and parent handoff are deferred to the coordinating monorepo session.
 - Federation implementation remains pinned until the Wizard explicitly names the first MVx.
+
+------------------------------
+
+## Interim handoff (2026-07-29) — planning/docs session, no code changed
+
+Session scope was entirely `.HANDOFF/` reconciliation + a new visual/checkbox tracker for the
+`diagnose instruction-bloat` + `deliver instruction-rollup` MVP. No `pickaxe.py` edits happened.
+Shipped CLI is unchanged at v0.3.6 (98 tests green, confirmed this session).
+
+**Docs touched:** `ROADMAP.md` (AS-IS/TO-BE + Track B MVP spec), `DESIGN.md` (dedup + 5D-surface
+status correction), `FEATURE.md` (dedup + F-03 section + tracker pointers), and two new files:
+`features-map.md` (mermaid visual, verb columns colored green/amber/red/grey) and
+`features-listing.md` (checkbox tracker, Franklin priorities A1-A4 + B/C backlog). The two new
+files were split from one combined draft for independent-scroll side-by-side viewing, and their
+cross-links were renamed/fixed for consistent naming (`features-map.md` / `features-listing.md`).
+
+**Next session marching orders (do not re-derive — read first):**
+[`features-listing.md`](features-listing.md) A1-A4, in order:
+1. **A1** — retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`), mirroring `discover`'s pattern
+2. **A2** — add the first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch
+3. **A3** — `diagnose instruction-bloat` (blocked on A1)
+4. **A4** — `deliver instruction-rollup` (blocked on A2 + A3's finding-schema output)
+
+Three open decisions block A3/A4 start — see `features-listing.md` § "Decisions still needed"
+(scan scope, diagnose→deliver handoff format, line-count thresholds). Answer those first.
 
 ------------------------------
 

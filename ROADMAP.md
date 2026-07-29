@@ -6,10 +6,13 @@
 # --------------------------------------------------------------------------
 # ABSTRACT: AS-IS capabilities and staged delivery plan for the pickaxe CLI.
 # CREATED:  260612 BY: LogicWizards.NYC
-# UPDATED:  260725 BY: GitHub Copilot
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::fleet.SOLOMON
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.0
+# VERSION:  0.3.6  (mirrors the pickaxe CLI's shipped version — this file
+#           IS the canonical version record; pickaxe.py has no __version__
+#           constant. Bump this at every wrap alongside the AS-IS section,
+#           not on a separate doc-revision cadence.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -18,46 +21,69 @@
 
 ---
 
-## AS-IS — v0.1.0 (current)
+## AS-IS — v0.3.6 (current, reconciled 2026-07-29)
 
-pickaxe is a **discovery and scoring** tool. It does not touch git or GitHub — it only reads and reports.
+pickaxe is a **discovery, diagnostic, and backup** tool with a real 5D command surface (`discover`, `diagnose`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **98 passed**, 2026-07-29.
 
-**What it does:**
+**Shipped commands (verified against source + tests, not just docs):**
 
-1. traverses a directory tree (respecting a configurable skip-list)
-2. Reads the first 60 lines of each script file (`.py`, `.ps1`, `.sh`, `.rb`)
-3. Extracts header metadata: `VERSION`, `CREATED`, `PURPOSE/ABSTRACT`, `LICENSE`, `SHEBANG`
-4. Calls `git log --follow --oneline` to count commits per file
-5. Scores each file on a 7-point scale (see [README § Scoring](README.md#scoring))
-6. Outputs a ranked table (terminal) or Markdown report (`--output`)
-7. For files with git history, **prints** (but does not run) the `git-filter-repo` command needed to extract them
+| Command | What it does | Shipped |
+|---|---|---|
+| `pickaxe discover [root]` | repo map: path/rel/remote/branch/flags/health_ok; `--submodules-only` filters to gitlink entries | v0.2.0 (260612); `--submodules-only` v0.3.4 |
+| `pickaxe discover commit-trends` | weekly/daily/monthly commit cadence, `--marathon-threshold`, `--holidays us`, `--save` | v0.3.3 (260615) |
+| `pickaxe discover drift [root]` | AHEAD/BEHIND/DIRTY/FLAGS table (`push-needed`\|`behind`\|`uncommitted`\|`no-remote`\|`fetch-failed`) | v0.3.6 |
+| `pickaxe diagnose [path]` | single-repo health: `missing_git`\|`missing_origin`\|`stripped_config`; gitlink/submodule-aware | v0.2.0; gitlink fix v0.3.2 (260603) |
+| `pickaxe scan [root]` | tool-worthiness scorer (header metadata, commit count, 7-point scale); `already_extracted` annotation | v0.1.0 scorer; annotation v0.3.4 |
+| `pickaxe backup <root> --to <dest>` | snapshot all repos (bundles + working-tree) to a portable backup dir; `--skip-working-tree`, `--force` | v0.3.5 |
+| `pickaxe restore <backup> --to <dest>` | restore repos from a pickaxe backup manifest | v0.3.5 |
 
-**What it does NOT do:**
+All commands support `--format table\|json`; all except `restore` support `--save` (session event under `.pickaxe/SESSIONS/`).
 
-- Execute any git operations
-- Handle whole subdirectories (only individual files)
-- Preserve or migrate branches, tags, or releases
-- Create remote repos
-- Push anything
+**What it does NOT do (real gaps — Track A/C/D/E):**
+
+- Execute any git-history-rewriting operation (`git-filter-repo`) — still only ever printed, never run
+- Handle subdir/cluster extraction as a unit (only single-file `scan` scoring exists)
+- Preserve branches/tags/releases through an extraction (no extraction path exists yet to test this against)
+- Create a remote repo or push anything (`gh repo create`, `git push`) — zero GitHub write access
+- Emit or read `.pickaxe/` chain-of-custody files (`provenance.md`, `filter-repo.cmd`, `extractions.md`) — schema designed, not implemented
+- Detect + carry AI instruction files during an extraction — designed, not implemented
+- Any Track C context-oracle query (Lightbulb Log lookup, tool inventory, public registry probe)
+- Any Track D MQL/persona verb (`pickaxe MATT seek ...`) or git-passthrough (`push`/`pull`/`fetch`/`status <name>`)
+- Any Track E manifest command (`discover tools`, `sync`, `context resolve`) — `AI-TRAINING-MANIFEST.md` v0.1.0 contract is design-only per `.HANDOFF/STATE.md`
 
 **Gap summary:**
 
-| Capability                                 | v0.1          |
-|--------------------------------------------|---------------|
-| Find + score candidates                    | ✅             |
-| Suggest extraction command                 | ✅ (prints it) |
-| Execute extraction                         | ❌             |
-| Subdir extraction (not just single files)  | ❌             |
-| Preserve branches / tags / releases        | ❌             |
-| Create remote repo                         | ❌             |
-| Push extracted repo                        | ❌             |
-| Dry-run mode                               | ❌             |
-| Chain-of-custody audit trail (`.pickaxe/`) | ❌             |
-| Detect + carry AI instruction files        | ❌             |
+| Capability                                      | v0.3.6                    |
+|--------------------------------------------------|---------------------------|
+| Find + score candidates (`scan`)                  | ✅                          |
+| Repo health map + drift (`discover`, `diagnose`)  | ✅                          |
+| Backup / restore whole workspace                  | ✅                          |
+| Commit-cadence analytics                          | ✅                          |
+| Suggest extraction command                        | ✅ (prints it)              |
+| Execute extraction (`--execute`)                  | ❌                          |
+| Subdir/cluster extraction                         | ❌                          |
+| Preserve branches / tags / releases               | ❌ (untested — no path yet) |
+| Create remote repo / push                         | ❌                          |
+| Chain-of-custody audit trail (`.pickaxe/`)        | ❌                          |
+| Detect + carry AI instruction files                | ❌                          |
+| Context oracle (Track C)                          | ❌ (design only)            |
+| MQL / persona delegation (Track D)                | ❌ (design only)            |
+| Manifest sync (Track E)                           | ❌ (design only)            |
+
+> **Reconciliation note (2026-07-29):** this section previously read "v0.1.0 (current)" while the file's own header (`VERSION: 0.3.2`→`0.3.4`) and `.HANDOFF/STATE.md` already tracked v0.3.4 → v0.3.6 shipped — a multi-version documentation drift, the same failure class as the proposed `diagnose ticket-drift` (see Track B). Fixed by ground-truthing against source + a live test run rather than trusting prior prose. See also [`.HANDOFF/STATE.md`](.HANDOFF/STATE.md) "Shipped baseline" for the full per-version changelog this table summarizes.
+
+## Cross-referenced tickets (Agile-Wizard)
+
+These Agile-Wizard tickets reference specific pickaxe capabilities (shipped or planned) directly — checked here so roadmap work doesn't silently diverge from what a ticket already promised or assumed:
+
+- [NEW-260107-AutoExec-A1S03-STORY-Add-Requires-Frontmatter-5-Instructions](../../Agile-Wizard/DATA/LogicWizards-NYC/Idea-Map/STORIES/NEW-260107-AutoExec-A1S03-STORY-Add-Requires-Frontmatter-5-Instructions.md) — cites the exact `diagnose ticket-drift` evidence (0/5 vs actual 5/5 done) used as this candidate's justification below in Track B.
+- [NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold](../../Agile-Wizard/DATA/Phoenix-CPAs/BACKLOG/NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold.md) — assumes a `repos.manifest.json` entry stub and a pickaxe `deliver` command for manifest-driven clone post-split; both remain unbuilt (Track B backlog, `PX-01`/`PX-03` in `.HANDOFF/STATE.md`) — flagged so that STORY's acceptance criteria aren't checked off against tooling that doesn't exist yet.
 
 ---
 
-## TO-BE — v0.2 (planned)
+## TO-BE — Track A: Extraction Pipeline (not started — no version shipped)
+
+*Renamed from "v0.2 (planned)". The actual version numbers v0.2.0 through v0.3.6 all shipped under Track B (repo hygiene/drift) instead — see the Version plan reconciliation note below. Track A has never shipped anything; everything in this section remains 100% aspirational.*
 
 **Theme: full extraction pipeline, not just discovery.**
 
@@ -146,6 +172,8 @@ Output should annotate these as `[already extracted → <remote>]` rather than o
 
 **Field observation (LogicWizards scan, 2026-05-18):** `psst`, `psstel`, `clipd`, `redact`, `pickaxe` itself all scored 6–7 and appeared as extraction candidates despite having their own repos at `wwwizards/*`. This is the primary source of false positives in mixed monorepo+submodule layouts.
 
+**Status (2026-07-29):** the *annotation* (`already_extracted` field, `[extracted → <remote>]` label) shipped in v0.3.4 under Track B — see AS-IS above. The *skip-by-default/exclude* behavior described in this section is still TO-BE: v0.3.4 annotates candidates, it does not omit them.
+
 ### Cluster detection
 
 Group files into extraction clusters using heuristics:
@@ -156,9 +184,9 @@ Group files into extraction clusters using heuristics:
 
 Output a cluster summary before individual file scores.
 
-### `--format json` ✅ shipped v0.3.3
+### `--format json` ✅ shipped v0.3.3 (Track B, not Track A)
 
-Emit the full candidate list as JSON for downstream piping into other tools (e.g., `converters`, a dashboard, a CI gate). Supported on `scan`, `discover`, and `discover commit-trends`. `already_extracted` field included in scan JSON output (v0.3.4).
+*Kept here for narrative continuity with the original plan text — this shipped early, under Track B, not as part of this (still unbuilt) extraction pipeline.* Emit the full candidate list as JSON for downstream piping into other tools (e.g., `converters`, a dashboard, a CI gate). Supported on `scan`, `discover`, and `discover commit-trends`. `already_extracted` field included in scan JSON output (v0.3.4).
 
 ### `--since <date>`
 
@@ -180,7 +208,9 @@ Use this as the live execution sheet for development and handoff continuity.
 
 ### Track A — Extraction foundation
 
-- [ ] `v0.2` pipeline runner ships with `--execute`, `--no-push`, `--private`, and `--subdir`
+*Unscheduled version slot — see Version plan reconciliation note. Zero items shipped as of 2026-07-29.*
+
+- [ ] pipeline runner ships with `--execute`, `--no-push`, `--private`, and `--subdir`
 - [ ] `.pickaxe/` chain-of-custody files are emitted on destination repo (`provenance.md`, `filter-repo.cmd`, `original-paths.txt`, `ai-instructions.md`)
 - [ ] source-repo extraction log appends reliably to `.pickaxe/extractions.md`
 - [ ] AI instruction detection supports `.github/*`, `AGENTS.md`, and `HANDOFF*.md`
@@ -194,6 +224,29 @@ Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 - [ ] `pickaxe diagnose` venv/dependency-tree detection — scan workspaces for common large dependency trees (`.venv/`, `venv/`, `env/`, `node_modules/`, `__pypackages__/`) and compare them with the nearest VS Code `settings.json` entries for `files.watcherExclude`, `files.exclude`, `search.exclude`, and `github.copilot.chat.codeSearch.fileExcludePatterns`. Emit a `dependency_tree_unexcluded` warning with directory name, file count, and missing exclusion surfaces. Rationale: `.venv` accounted for 28,370 of 30,161 workspace files (94%) on this machine while one Extension Host reached 3,162 MB. After exclusions, a VS Code update, reboot, and Python/Pylance extension removal, all Extension Hosts stabilized at 595 MB (81.2% lower), CPU remained in the low 20% range, and overall RAM remained approximately 50% lower. The result demonstrates combined recovery; it does not isolate a single cause. Docs: `.AI-TRAINING/GPU-VsCode-TroublleShooting-101.md`.
 - [x] `pickaxe discover` — emits local repo map (path, remote, branch, health flags); default output `table`, `--format json` for piping
 - [x] `pickaxe discover commit-trends` — weekly (or daily/monthly) commit cadence for any repo; marathon detection (>2 commits/week by default, configurable); `--from`/`--to` date range; `--by week|day|month`; `--repo <path>` (defaults to cwd git root, works cross-repo including external monorepos); outputs table with week label, count, marathon flag; US holiday annotation opt-in (`--holidays us`)
+- [x] `pickaxe discover drift` — AHEAD/BEHIND/DIRTY/FLAGS table across a workspace (`push-needed`\|`behind`\|`uncommitted`\|`no-remote`\|`fetch-failed`); shipped v0.3.6
+- [x] `pickaxe discover --submodules-only` — filters repo map to gitlink (submodule) entries only; shipped v0.3.4
+- [x] `pickaxe scan` `already_extracted` annotation — flags candidates already living in a different git root (`[extracted → <remote>]`); shipped v0.3.4; does not yet skip/omit them by default (see Track A "Standalone-repo detection")
+- [x] `pickaxe backup <root> --to <dest>` — bundles + working-tree snapshot of every repo in a workspace to a portable dir; `--skip-working-tree`, `--force`; shipped v0.3.5
+- [x] `pickaxe restore <backup> --to <dest>` — restores repos from a pickaxe backup manifest; shipped v0.3.5
+- [ ] `pickaxe discover ownership` — report the owning Git repository, nearest `.HANDOFF`, applicable instruction files, dirty state, and independent release boundary for a path before an agent edits it. Treat nested projects with their own tests, handoffs, and release cadence as extraction candidates, not automatically as submodules.
+- [ ] `pickaxe diagnose handoff-drift` — compare STATE, latest session SBAR, latest handoff JSON, current diff, and declared test counts; report inconsistencies as evidence without guessing which artifact is authoritative. Initial evidence is a verified 17-vs-18 documentation inconsistency; concurrent overwrite remains an unproven hypothesis until two timestamped reads disagree.
+- [ ] `pickaxe deliver handoff-rollup` — automate the STATE.md Reconciliation Algorithm defined in root `.HANDOFF/PROTOCOL.md` (archive closed session blocks to `SESSIONS/`, relocate durable reference data to the nearest owner, leave one-line pointers, re-verify the <200-line cap). Today an AI agent executes this by hand every session (confirmed 2026-07-28: no pickaxe command performed the 2026-07-24 stable-IDs housekeeping move). This is the concrete automation target — note `backup`/`restore` already write files (v0.3.5), so the gap is the reconciliation *logic*, not write-capability itself.
+- [ ] `pickaxe diagnose write-conflict` MVx — implement compare-before-write fingerprints for generated handoff updates: record the source hash at read time, re-read immediately before write, and fail closed with a reconciliation report when the hash changed. Keep file leases advisory and local-only until measured conflicts justify stronger coordination.
+- [ ] `pickaxe diagnose ticket-drift` — compare an Agile-Wizard ticket's checkbox/status claims against ground truth in the files it references (frontmatter fields, `lastModified`, git log) and flag divergence. Evidence: STORY `NEW-260107-AutoExec-A1S03` (created 2026-01-07) showed 0/5 acceptance criteria checked; direct inspection of the 5 referenced instruction files confirmed all 5 already had `requires:` added between 2026-01-07 and 2026-05-21 — the ticket sat stale for ~7 months while the underlying work was actually done (confirmed/corrected 2026-07-29). Same class of problem as `handoff-drift`, applied to Agile-Wizard tickets instead of STATE.md/handoff JSON. **Backlogged 2026-07-29 (user call): buildable-now per ROI table, intentionally not scoped further this session — pick up fresh, priority/evidence above still stands, no re-derivation needed.**
+- [ ] `pickaxe diagnose shell-sprawl` — detect terminal/shell process count and per-shell RAM footprint using the same before/after measurement pattern already proven by the venv/dependency-tree diagnostic above (3,162MB -> 595MB after exclusion). Flag when spawned-shell count or RAM exceeds a threshold. Targets EPIC `NEW-251204-AutoExec-A1E34` Success Criterion #2 ("Shell Isolation... RAM usage <100MB per test run vs 500+MB with shell spawning") and the original terminal-spawn machine crashes (LogicWizards + Fordham) cited as the reason AutoExecBOT/Federation dev-work was pinned. **Backlogged 2026-07-29 (user call): same status as ticket-drift above — buildable-now, deliberately deferred, not analyzed further this session.**
+- [ ] `pickaxe diagnose instruction-bloat` — **MVP scope, buildable now, NO Federation dependency (rescoped 2026-07-29 — user rejected the earlier FD-18/tier-gated framing as unnecessary analysis overhead).** Programmatically apply the line-count + module-scatter triggers already hand-documented in root `copilot-instructions.md`'s own "Proactive Context Optimization" / "Modularization Triggers" section against `.github/*.instructions.md`, `AGENTS.md`, and `SKILL.md` files: flag files >1000 lines (or a configurable threshold), flag >50 lines of module-specific pattern clustered under one heading in an otherwise-general file, honor the doc's own stated exemptions (<800 lines with no clear module boundary, <30-line patterns not worth extracting). No new taxonomy, no Federation tier awareness needed — the heuristic already exists as prose; this just runs it. Output populates that same doc's existing "📊 MODULARIZATION OPPORTUNITY DETECTED" prompt template with real numbers instead of manual eyeballing.
+- [ ] `pickaxe deliver instruction-rollup` — **MVP scope, buildable now.** Given a file + line-range flagged by `diagnose instruction-bloat`, extract the block to a new `.github/<module>.instructions.md` using the Instruction Inheritance Pattern frontmatter already specified in `copilot-instructions.md` (`description`/`applyTo`/`requires`/`version`/`tags`/`status`/`lastModified`/`maintainer`), and replace the extracted block in the source file with a one-line pointer. Dry-run by default per D-01 (discovery-only default); `--execute` to write. Does not require Federation tier classification — that richer version stays backlogged as `ai-labs/federation/DESIGN.md` FD-18, referenced but not a blocker for this MVP.
+
+### ROI prioritization (2026-07-29 discovery batch)
+
+| Candidate | Cost proxy | Efficacy proxy | Sequencing |
+|---|---|---|---|
+| `diagnose ticket-drift` | S — reuses `handoff-drift`'s compare-and-report shape against a new target glob | HIGH — caught 1 real stale ticket on first use today; the same grep that found it matched 230 lines across 41 Agile-Wizard files, suggesting more exist | **Backlogged 2026-07-29** — buildable now, deferred to a future session (user call, not a value judgment) |
+| `diagnose shell-sprawl` | S-M — same measurement shape as the already-shipped venv/dependency-tree diagnostic | HIGH — directly targets the named, repeated real-machine-crash cause on 2 machines (LogicWizards + Fordham) | **Backlogged 2026-07-29** — buildable now, deferred to a future session (user call, not a value judgment) |
+| `diagnose instruction-bloat` | S-M — rescoped 2026-07-29: reuses `copilot-instructions.md`'s own already-written trigger thresholds + exemptions verbatim, no new taxonomy | HIGH — directly targets this session's own pain (compaction churn, re-derivation cost, half-a-day burned re-establishing context) | **Buildable now, MVP scope, NO Federation unpin required.** Full tier-aware version remains FD-18/backlogged, referenced only. |
+| `deliver instruction-rollup` | S-M — rescoped 2026-07-29: reuses the already-documented Instruction Inheritance Pattern frontmatter fields, dry-run-first per D-01 | HIGH — same rationale as instruction-bloat; this is the write-side that actually stops re-teaching an agent the same context every session | **Buildable now, MVP scope, NO Federation unpin required.** |
+- [ ] `pickaxe discover split-candidates` — score directories for SIDE-PROJECT/submodule extraction using independent release cadence, scoped instructions, tests, handoff ownership, consumer count, and repeated cross-agent edit overlap. Pilot against `Intune-Deployments`; output recommendation only, never mutate repositories.
 - [ ] `pickaxe deliver dirs` — clone missing repos and restore missing remotes from a canonical manifest (`repos.manifest.json`)
 - [ ] `pickaxe discover drift` — compare local inventory vs canonical GitHub set, report mismatches (read-only)
 - [ ] `pickaxe deliver drift` — apply fixes from drift report (dry-run by default)
@@ -315,8 +368,8 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 
 ### Done criteria by milestone
 
-- [ ] `v0.2` done: extraction pipeline runs end-to-end on at least one real carve-out
-- [ ] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state
+- [ ] `Track A` done (mis-numbered `v0.2` in the original plan — see Version plan reconciliation note): extraction pipeline runs end-to-end on at least one real carve-out
+- [ ] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state (`discover`/`diagnose`/`discover drift` ✅ shipped v0.2.0–v0.3.6; `deliver dirs`/`deliver drift` remediation still ❌)
 - [ ] `v0.6` done: `pickaxe push <name>` completes sub → parent chain without manual git steps
 - [ ] `v0.8` done: `pickaxe fetch` populates `remote.version` and drift table is live
 - [ ] `v0.9` done: `pickaxe discover tools` generates deterministic Markdown from YAML, `pickaxe context resolve` excludes inactive evidence, and `pickaxe sync` emits `DELTA.md`
@@ -326,18 +379,33 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 
 ## Version plan
 
+### Shipped (ground truth, verified 2026-07-29 — 98/98 tests green)
+
+| Version | Date | Theme | Key features |
+|---|---|---|---|
+| v0.1.0 | 260506 | Discovery | `scan` — tool-worthiness scoring, `--output` Markdown report, `--dry-run` |
+| v0.2.0 | 260612 | Repo health (Track B) | `discover`, `diagnose` — 5D command surface, repo map + health flags |
+| v0.3.2 | 260603 | Gitlink fix (Track B) | submodule worktree (`.git`-as-file) support in `discover`/`diagnose` |
+| v0.3.3 | 260615 | Commit cadence (Track B) | `discover commit-trends`, `--format json` on scan/discover |
+| v0.3.4 | 260615 | Extraction annotation (Track B) | `scan` `already_extracted` field, `discover --submodules-only` |
+| v0.3.5 | — | Backup/restore (Track B) | `backup`, `restore` — full workspace snapshot + recovery |
+| v0.3.6 *(current)* | — | Remote drift (Track B) | `discover drift` — ahead/behind/dirty/flags table |
+
+### Planned (theme slots — not yet sequenced chronologically, see reconciliation note)
+
 | Version | Theme | Key features |
 |---|---|---|
-| v0.1 *(current)* | Discovery | Score + suggest |
-| v0.2 | Extraction | `--execute`, subdir mode, `.pickaxe/` chain-of-custody, AI context detection, full pipeline dry-run output |
-| v0.3 | Clustering | Cluster detection, shared-history grouping |
+| TBD (Track A) | Extraction | `--execute`, subdir mode, `.pickaxe/` chain-of-custody, AI context detection, full pipeline dry-run output — **unscheduled**, see note below |
+| TBD (Track A) | Clustering | Cluster detection, shared-history grouping — **unscheduled**, see note below |
 | v0.4 | Workspace | `pickaxe init <slug>`, `pickaxe workspace init`, `pickaxe workspace split` — cascade-aware scaffold for HOBOTS `.PROTOCOL/` + `AGENTS.md` + `DESIGN.md` + `SPEC.md` inheritance; nested monorepo support; `SPLIT-FROM:`/`SPLIT-TO:` lineage in STATE.md |
-| v0.9 | Manifest | `pickaxe discover tools` (YAML → MD round-trip); `pickaxe sync` (`.AI-TRAINING/` fork + delta); `pickaxe discover tools --diff` (CI drift gate) |
-| v0.5 | Automation | `--format json`, `--since`, GitHub Actions workflow |
+| v0.5 | Automation | `--since`, GitHub Actions workflow (`--format json` already shipped early, v0.3.3 — see Shipped table) |
 | v0.6 | Collaborate | `pickaxe push/pull/fetch/status <dotted-name>` — submodule-aware git passthrough; full sub → parent chain in one command; `remote.version` drift table |
 | v0.7 | Collaborate+ | `pickaxe log/diff/<verb>` passthrough; `--wrap` flag writes handoff + STATE.md before push; multi-parent chain (sub → mono → grandparent) |
 | v0.8 | MQL + Fetch | `pickaxe MATT seek *.remote.version as json` — first MQL round-trip; HOBOTS persona delegation surface; `remote.version` written back to YAML; drift column live in tools.md |
+| v0.9 | Manifest | `pickaxe discover tools` (YAML → MD round-trip); `pickaxe sync` (`.AI-TRAINING/` fork + delta); `pickaxe discover tools --diff` (CI drift gate) |
 | v1.0 | Catalog | Multi-repo index, persistent state, query interface |
+
+> **Reconciliation note (2026-07-29):** the original plan slotted Extraction at v0.2 and Clustering at v0.3. Actual development took a different path — six versions (v0.2.0 → v0.3.6) shipped entirely under Track B (repo hygiene/drift), and Track A (extraction) has never shipped anything. Those two version numbers are now taken by unrelated work, so Extraction/Clustering have no reserved slot. **Flagged for a decision, not resolved here:** either wedge Track A in before Workspace (shifting v0.4→v0.9 down by one each) or leave Track A unscheduled/opportunistic. Not changed unilaterally in this pass — doing so would cascade into every Track D/E cross-reference to these same numbers elsewhere in this file (`v0.4` workspace parent-chain dependency, `v0.8` MQL milestone, `v0.9` Track E foundational dependency).
 
 **v0.4 design reference:** `wwwizards/ai-labs` `.HANDOFF/DESIGN.md` D-10, `.HANDOFF/FEATURE.md` F-pickaxe-workspace, `.PROTOCOL/README.md` § Inheritance Scope.
 

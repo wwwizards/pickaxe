@@ -11,10 +11,12 @@
 #     alternatives were rejected. Read before implementing new features.
 #     Acronym locked 2026-06-16. Release target: 2026-07-04 (Independence Day).
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260725 BY: GitHub Copilot
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::fleet.SOLOMON
 # ARCHITECT: SOLOMON
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.0
+# VERSION:  0.3.1  (this doc's own revision counter — NOT the pickaxe CLI
+#           version, and NOT ROADMAP.md's revision counter. CLI is
+#           currently v0.3.6; see ../ROADMAP.md AS-IS section.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -49,9 +51,11 @@
 
 ------------------------------
 
-## Command model — 5D surface (v0.2 target)
+## Command model — 5D surface (design target, not yet implemented as of v0.3.6)
 
 Commands follow the 5D methodology (Discover → Diagnose → Design → Deliver → Document). Every phase is a top-level subcommand; the noun after it is the target artifact or operation. Discover and Deliver share nouns intentionally — the same noun read-only in Discover, mutating in Deliver. This makes dry-run discipline structural, not optional.
+
+*Status: aspirational. The shipped v0.3.6 CLI is `discover [commit-trends|drift]`, `diagnose`, `scan`, `backup`, `restore` — a flatter surface that does not follow this noun model. See the Reconciliation note after D-13 and `../ROADMAP.md` Track A.*
 
 ```
 pickaxe discover [drift|dirs|docs|*]     # AS-IS state: read-only scan & map
@@ -182,6 +186,8 @@ Every CLI invocation should optionally emit a structured session event to `.pick
 
 **Cross-reference:** `wwwizards/ai-labs` `federation/FEATURES/F5-federated-peer-nodes.md`.
 
+**Ticket dependency (2026-07-29):** [NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold](../../../Agile-Wizard/DATA/Phoenix-CPAs/BACKLOG/NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold.md) assumes a `repos.manifest.json` entry plus a `pickaxe deliver` command for manifest-driven clone post-split — neither exists yet. `workspace split`/`workspace init` (this decision) and `deliver` (Command model above) are both still design-target only; the STORY's acceptance criteria cannot be checked against real tooling until this D-08 primitive ships.
+
 ---
 
 ## D-09: Layer numbering aligns with federation/F2 (260612)
@@ -214,91 +220,10 @@ Every `pickaxe workspace init` and `pickaxe workspace split` invocation must wri
 
 Git preserves retired content history. A retained evidence artifact must be represented as evidence or archive state, not as an obsolete full decision with a supersession banner in the active plane.
 
+---
 
-### Layer 1: Discovery
+## Reconciliation note (2026-07-29)
 
-- filesystem walk
-- script header parsing
-- git metadata collection
+This file previously repeated the entire "Architecture sketch" + "Command model" block twice (once above D-01, once again after D-13, the second copy with inconsistent heading levels) — an editing artifact, not intentional structure. The duplicate has been removed; the single canonical copy above D-01 remains authoritative.
 
-### Layer 2: Repo health
-
-- detect repo roots and nested boundaries
-- inspect `.git/config` for remotes
-- emit health flags (`missing_git`, `missing_origin`, `remote_mismatch`, `detached_folder`)
-
-### Layer 3: Remediation
-
-- `hydrate` from canonical manifest
-- optional remote restore
-- non-destructive mode as default
-
-### Layer 4: Context
-
-- ai-labs Lightbulb Log lookup
-- canonical tool inventory lookup
-- public registry existence probes
-
-## Command model — 5D surface (v0.2 target)
-
-Commands follow the 5D methodology (Discover → Diagnose → Design → Deliver → Document). Every phase is a top-level subcommand; the noun after it is the target artifact or operation. Discover and Deliver share nouns intentionally — the same noun read-only in Discover, mutating in Deliver. This makes dry-run discipline structural, not optional.
-
-```
-pickaxe discover [drift|dirs|docs|*]     # AS-IS state: read-only scan & map
-pickaxe diagnose [git|remote|config|*]   # root-cause: where does it hurt?
-pickaxe design   [library|script|app|test|solution|experiment|plan|play|playbook|runbook]
-pickaxe deliver  [drift|dirs|docs|*]     # execute treatment (dry-run by default)
-pickaxe document [session|handoff|report|runbook]
-```
-
-### Phase → operation mapping
-
-| Phase | What it does | Mutates? |
-|---|---|---|
-| `discover` | walk repos, emit AS-IS map (paths, remotes, branches, health flags) | no |
-| `diagnose` | inspect `.git/config`, detect missing git, missing origin, stripped config, remote mismatch | no |
-| `design` | scaffold a new artifact from a template (library, script, app, test, etc.) | yes — creates files |
-| `deliver` | execute the plan from diagnose/discover: fix drift, hydrate dirs, provision docs | yes — dry-run first |
-| `document` | generate handoff artifacts, session records, runbooks, autodoc stubs | yes — creates files |
-
-### Subcommand nouns (initial set)
-
-**discover / deliver targets:**
-- `drift` — compare local inventory vs canonical manifest, report mismatches
-- `dirs` — directory structure map or repair
-- `docs` — find or generate documentation stubs
-- `*` (default) — full scan across all targets
-
-**diagnose targets:**
-- `git` — verify `.git/` exists and is a valid repo root
-- `remote` — verify `origin` is present and reachable
-- `config` — inspect `.git/config` for stripped or malformed stanzas
-- `*` (default) — run all checks
-
-**design templates:**
-- `library` — Python/PS module scaffold
-- `script` — standalone script with header template
-- `app` — application scaffold (CLI entrypoint + tests)
-- `test` — test file stub (pytest / Pester)
-- `solution` — full solution folder (script + test + README + .HANDOFF/)
-- `mvx` — mini-viability experiments' scaffold (hypothesis + test + observation - to fail forward fast)
-- `plan` — plan document stub
-- `play` / `playbook` / `runbook` — ops procedure document stubs
-
-**document targets:**
-- `session` — generate session record from git log delta
-- `handoff` — generate/update STATE.md from current session context
-- `report` — timestamped Markdown + JSON remediation report
-- `runbook` — ops procedure document
-
-## Prior command names (superseded)
-
-`pickaxe doctor` → `pickaxe diagnose` `pickaxe inventory` → `pickaxe discover` `pickaxe hydrate` → `pickaxe deliver dirs` (or `deliver drift`) `pickaxe drift` → `pickaxe discover drift` (read) + `pickaxe deliver drift` (fix) `pickaxe provision` → `pickaxe deliver docs` `pickaxe report` → `pickaxe document report`
-
-## Design guardrails
-
-- dry-run first for all mutating operations (`deliver`, `design`, `document`)
-- no forced overwrite of existing directories
-- all remediation actions logged with timestamp + rationale
-- keep output agent-agnostic (human-readable + machine-readable)
-- `discover` and `diagnose` are always read-only — no exceptions
+Separately, and more substantively: the "Command model — 5D surface" section above describes a `discover/diagnose/design/deliver/document` noun-based CLI that **was never built**. The CLI that actually shipped (v0.1.0 → v0.3.6, see `../ROADMAP.md` AS-IS section) took a simpler, flatter path: `discover [commit-trends|drift]`, `diagnose`, `scan`, `backup`, `restore`. Only `discover` and `diagnose` exist as real top-level verbs from the 5D model; `design`, `deliver`, and `document` do not exist at all, and `scan`/`backup`/`restore` aren't accounted for by the 5D model in any form. The Command model section is left in place as the Track A/D/E design target (see ROADMAP.md's Track A reconciliation), not a description of current behavior — treat every code block under it as aspirational until ROADMAP.md marks the corresponding item `[x]`.
