@@ -7,11 +7,10 @@
 # ABSTRACT: Live state of the pickaxe repository, including shipped commands,
 #           active design contracts, blockers, and next implementation work.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (diagnose noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
 # ARCHITECT: JN (Joe Negron -- LogicWizards.NYC)
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
-#           canonical. All .HANDOFF docs bump together at every wrap.)
+# VERSION:  0.4.0
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -21,7 +20,7 @@
 
 ## Snapshot
 
-- Shipped CLI remains v0.3.4; no command implementation changed in this session.
+- Shipped CLI is now v0.4.0. This session shipped A1-A4 (Track B, repo-hygiene diagnostics, unrelated to the Federation contract below): `diagnose` noun-dispatch retrofit (`DIAGNOSE_NOUNS`, A1), first-ever top-level `deliver` subparser + `_cmd_deliver` (A2), `diagnose instruction-bloat` (A3), `deliver instruction-rollup` (A4). 21 new tests, 119/119 total green. See ROADMAP.md AS-IS table + `features-listing.md` for full details.
 - [AI Training Manifest Contract](AI-TRAINING-MANIFEST.md) v0.1.0 is the canonical design for nearest-owner routing, active-context resolution, evidence isolation, and governed promotion.
 - Pickaxe is the sole Federation resolver, classifier, synchronizer, and promoter. ai-labs owns protocol and promotion targets; ai-labs-toolkit may consume output but does not duplicate traversal or classification.
 - The contract is design-only. `pickaxe context discover|route|resolve|check|promote` are not implemented yet.
@@ -43,32 +42,17 @@
 
 ------------------------------
 
-## Interim handoff (2026-07-29) — planning/docs session, no code changed
-
-Session scope was entirely `.HANDOFF/` reconciliation + a new visual/checkbox tracker for the
-`diagnose instruction-bloat` + `deliver instruction-rollup` MVP. No `pickaxe.py` edits happened.
-Shipped CLI is unchanged at v0.3.6 (98 tests green, confirmed this session).
-
-**Docs touched:** `ROADMAP.md` (AS-IS/TO-BE + Track B MVP spec), `DESIGN.md` (dedup + 5D-surface
-status correction), `FEATURE.md` (dedup + F-03 section + tracker pointers), and two new files:
-`features-map.md` (mermaid visual, verb columns colored green/amber/red/grey) and
-`features-listing.md` (checkbox tracker, Franklin priorities A1-A4 + B/C backlog). The two new
-files were split from one combined draft for independent-scroll side-by-side viewing, and their
-cross-links were renamed/fixed for consistent naming (`features-map.md` / `features-listing.md`).
-
-**Next session marching orders (do not re-derive — read first):**
-[`features-listing.md`](features-listing.md) A1-A4, in order:
-1. **A1** — retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`), mirroring `discover`'s pattern
-2. **A2** — add the first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch
-3. **A3** — `diagnose instruction-bloat` (blocked on A1)
-4. **A4** — `deliver instruction-rollup` (blocked on A2 + A3's finding-schema output)
-
-Three open decisions block A3/A4 start — see `features-listing.md` § "Decisions still needed"
-(scan scope, diagnose→deliver handoff format, line-count thresholds). Answer those first.
-
-------------------------------
-
 ## Shipped baseline
+
+## What shipped in v0.4.0 (260729)
+
+- `DIAGNOSE_NOUNS = {'instruction-bloat'}` — `diagnose` retrofitted with noun-dispatch, mirroring `discover`'s existing pattern (A1); 100% backward-compatible with the existing single-arg `diagnose [path]` invocation
+- `DELIVER_NOUNS = {'instruction-rollup'}` — first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch (A2)
+- `diagnose_instruction_bloat(root, max_lines=1000, max_section_lines=50)` — recursive scan (mirrors `discover`/`scan` walk + `SKIP_DIRS`) of `AGENTS.md`, `SKILL.md`, `copilot-instructions.md`, `*.instructions.md` files; flags whole-file and per-section (`## `/`### ` heading) line-count bloat (A3)
+- `plan_instruction_rollup(findings, root)` / `execute_instruction_rollup(findings, root)` — extracts a flagged block into a new `<slug>.instructions.md` using the Instruction Inheritance Pattern frontmatter; dry-run by default (D-01), `--execute` to write, idempotent (dest-exists check precedes any source mutation) (A4)
+- `--from-report <findings.json>` — the only diagnose→deliver handoff mechanism for the MVP (reads `diagnose instruction-bloat --format json` output verbatim)
+- `test_pickaxe.py` — 119 tests total (21 new: 3 `TestDiagnoseNounDispatch`, 8 `TestDiagnoseInstructionBloat`, 10 `TestDeliverInstructionRollup`), all green
+- ROADMAP.md, FEATURE.md, DESIGN.md, features-listing.md, features-map.md — all bumped to v0.4.0 together per the 2026-07-29 version-mirroring decision
 
 ## What shipped in v0.3.4 (260615)
 

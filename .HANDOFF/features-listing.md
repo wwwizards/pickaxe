@@ -12,10 +12,10 @@
 #     overview) and FEATURE.md (intent/scope); ROADMAP.md carries the
 #     AS-IS/TO-BE narrative this file distills into trackable checkboxes.
 # CREATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped, 119 tests green
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+# VERSION:  0.4.0  (mirrors the pickaxe CLI version; ../ROADMAP.md is
 #           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
@@ -36,10 +36,10 @@
 
 ## 🎯 Current sprint focus (A-tier only)
 
-- [ ] **A1** — retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`), mirroring `discover`'s existing pattern
-- [ ] **A2** — add the first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch
-- [ ] **A3** — `diagnose instruction-bloat` (depends on A1)
-- [ ] **A4** — `deliver instruction-rollup` (depends on A2 + A3's output contract)
+- [x] **A1** — retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`), mirroring `discover`'s existing pattern — shipped v0.4.0
+- [x] **A2** — add the first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch — shipped v0.4.0
+- [x] **A3** — `diagnose instruction-bloat` (depends on A1) — shipped v0.4.0
+- [x] **A4** — `deliver instruction-rollup` (depends on A2 + A3's output contract) — shipped v0.4.0
 
 Everything below A-tier is reference/backlog — captured so it isn't lost, not something to decide today.
 
@@ -55,28 +55,28 @@ Everything below A-tier is reference/backlog — captured so it isn't lost, not 
 - [ ] ⚪ `discover split-candidates` — undefined, Track B backlog — **B2**
 - [ ] ⚪ `discover tools` (YAML→MD manifest, Track E) — undefined, no schema decided — **C1**
 
-## Track: `diagnose` 🟡 core shipped, structural retrofit needed for new verbs
+## Track: `diagnose` � core + instruction-bloat shipped
 
 - [x] core diagnose (missing `.git`/origin/config) — v0.2.0; gitlink fix v0.3.2
-- [ ] 🔴 **A1** — noun-dispatch retrofit (`DIAGNOSE_NOUNS` + `noun` arg, mirroring `discover`) — blocks A3
-- [ ] 🟡 **A3** — `diagnose instruction-bloat` (MVP scoped 2026-07-29, blocked on A1)
-  - [ ] file-count / whole-file line-threshold check (simple)
-  - [ ] section/heading line-count parser for the ">50-line scattered pattern" rule (new complexity — no H2/H3 boundary parser exists yet)
-  - [ ] `--format table|json` + `--save` convention (established pattern, easy to forget)
+- [x] **A1** — noun-dispatch retrofit (`DIAGNOSE_NOUNS` + `noun` arg, mirroring `discover`) — shipped v0.4.0
+- [x] **A3** — `diagnose instruction-bloat` — shipped v0.4.0
+  - [x] file-count / whole-file line-threshold check (`--max-lines`, default 1000)
+  - [x] section/heading line-count parser for the ">50-line scattered pattern" rule (`_parse_sections`, `--max-section-lines`, default 50)
+  - [x] `--format table|json` convention
 - [ ] ⚪ `diagnose handoff-drift` — undefined, Track B backlog — **B3**
 - [ ] ⚪ `diagnose write-conflict` (compare-before-write fingerprints) — undefined, Track B backlog — **B4**
 - [ ] ⚪ `diagnose ticket-drift` — **backlogged 2026-07-29 (user call)**, buildable-now, not a priority right now — **C2**
 - [ ] ⚪ `diagnose shell-sprawl` — **backlogged 2026-07-29 (user call)**, buildable-now, not a priority right now — **C3**
 - [ ] ⚪ venv/dependency-tree exclusion detection — undefined, Track B backlog — **B5**
 
-## Track: `deliver` 🔴 verb does not exist yet at all
+## Track: `deliver` � first verb shipped (instruction-rollup)
 
-- [ ] 🔴 **A2** — top-level `deliver` subparser + `_cmd_deliver` dispatch — blocking prerequisite for every `deliver-*` verb below
-- [ ] 🟡 **A4** — `deliver instruction-rollup` (MVP scoped 2026-07-29, blocked on A2 + A3's finding-schema output)
-  - [ ] diagnose→deliver JSON handoff contract (finding schema: `file`, `start_line`, `end_line`, `reason`)
-  - [ ] frontmatter auto-fill rules (`applyTo`/`description`/`tags`/`maintainer` — which are inferred vs. placeholder)
-  - [ ] dry-run-by-default (D-01) + `--execute` to write
-  - [ ] idempotent pointer check (skip if block already extracted — repo's own Idempotent Script Pattern rule)
+- [x] **A2** — top-level `deliver` subparser + `_cmd_deliver` dispatch — shipped v0.4.0
+- [x] **A4** — `deliver instruction-rollup` — shipped v0.4.0
+  - [x] diagnose→deliver JSON handoff contract (`--from-report <findings.json>`; finding schema: `file`, `start_line`, `end_line`, `reason`, `kind`, `heading`)
+  - [x] frontmatter auto-fill rules (`description`/`requires`/`version`/`status`/`lastModified` auto-filled; `applyTo`/`tags`/`maintainer` left as TODO placeholders)
+  - [x] dry-run-by-default (D-01) + `--execute` to write
+  - [x] idempotent pointer check (dest-exists check runs before any source mutation — repo's own Idempotent Script Pattern rule)
 - [ ] ⚪ `deliver handoff-rollup` — undefined, Track B backlog — **B6**
 - [ ] ⚪ `deliver dirs` (clone missing repos from manifest) — undefined, Track B/E backlog — **B7**
 - [ ] ⚪ `deliver drift` (apply drift-report fixes) — undefined — **B8**
@@ -111,8 +111,8 @@ Everything below A-tier is reference/backlog — captured so it isn't lost, not 
 
 ---
 
-## Decisions still needed before A3/A4 can start (answer here, don't re-derive)
+## Decisions still needed before A3/A4 can start (answered 2026-07-29)
 
-- [ ] Scan scope for `diagnose instruction-bloat`: single-repo (cwd, like `diagnose`) or workspace-wide (like `scan`/`backup`)? Nested submodule `.github/` dirs won't be found by cwd-only scanning.
-- [ ] Handoff format between A3 and A4: `--from-report findings.json` vs. manual `--file/--start/--end` flags?
-- [ ] Default line-count threshold: hardcoded 1000, or a `--max-lines` flag? Default for the per-section (>50-line) rule?
+- [x] **Scan scope for `diagnose instruction-bloat`:** neither pure single-repo nor a separate workspace-wide mode — mirror `discover`'s own walk: one positional `path` (default `.`), recursive `os.walk` with the shared `SKIP_DIRS` prune, same as `discover()`/`scan()` already do. A single root arg naturally covers nested submodule `.github/` dirs because the walk doesn't stop at repo boundaries (same reason `discover` finds pickaxe-inside-LogicWizards today). No new "workspace-wide" flag needed.
+- [x] **Handoff format between A3 and A4:** `--from-report <findings.json>` (the `diagnose instruction-bloat --format json` output, read verbatim) is the only mechanism for the MVP — no manual `--file/--start/--end` flags. Keeps the finding schema (`file`/`start_line`/`end_line`/`reason`) as the single source of truth and avoids a second, drift-prone input path. Manual flags are backlog if a future ad-hoc use case demands it.
+- [x] **Default line-count threshold:** `--max-lines` flag, default `1000` (whole-file). Per-section rule: `--max-section-lines` flag, default `50`. Both configurable rather than hardcoded, consistent with existing flags like `--marathon-threshold` on `discover commit-trends`.

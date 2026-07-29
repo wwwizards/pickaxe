@@ -13,10 +13,10 @@
 #     priorities, and open decisions. Companion to FEATURE.md (intent/scope)
 #     and ROADMAP.md (AS-IS/TO-BE narrative).
 # CREATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped, tests green (119 total)
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+# VERSION:  0.4.0  (mirrors the pickaxe CLI version; ../ROADMAP.md is
 #           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
@@ -34,9 +34,9 @@ Swimlanes are verb tracks off the `PICKAXE` root; box fill + text color signal s
 
 ```mermaid
 flowchart LR
-    ROOT["PICKAXE\nCLI"]
+    ROOT["<b>PICKAXE\n(CLI)"]
 
-    subgraph DISCOVER["discover"]
+    subgraph DISCOVER["<b>discover"]
     direction TB
         D1["repo map + health\nflags (v0.2.0)"]
         D2["commit-trends\n(v0.3.3)"]
@@ -46,48 +46,48 @@ flowchart LR
         D6["split-candidates\n(undefined, B2)"]
     end
 
-    subgraph DIAGNOSE["diagnose"]
+    subgraph DIAGNOSE["<b>diagnose"]
     direction TB
         G1["core diagnose\n(v0.2.0)"]
-        G2["noun-dispatch\nretrofit (A1)"]
-        G3["instruction-bloat\nMVP (A3)"]
+        G2["noun-dispatch\nretrofit (v0.4.0)"]
+        G3["instruction-bloat\n(v0.4.0)"]
         G4["handoff-drift\n(undefined, B3)"]
         G5["ticket-drift\n(backlogged, C2)"]
         G6["shell-sprawl\n(backlogged, C3)"]
     end
 
-    subgraph DELIVER["deliver"]
+    subgraph DELIVER["<b>deliver"]
     direction TB
-        L1["deliver subparser\n(new verb, A2)"]
-        L2["instruction-rollup\nMVP (A4)"]
+        L1["deliver subparser\n(v0.4.0)"]
+        L2["instruction-rollup\n(v0.4.0)"]
         L3["handoff-rollup\n(undefined, B6)"]
         L4["dirs/drift/docs\n(undefined, B7-9)"]
     end
 
-    subgraph SCAN["scan"]
+    subgraph SCAN["<b>scan"]
     direction TB
         S1["tool scorer\n(v0.1.0)"]
         S2["already_extracted\n(v0.3.4)"]
         S3["skip-by-default\n(undefined, C4)"]
     end
 
-    subgraph BKRS["backup/restore"]
+    subgraph BKRS["<b>backup/restore"]
     direction TB
         BK1["backup\n(v0.3.5)"]
         BK2["restore\n(v0.3.5)"]
     end
 
-    subgraph DSDOC["design/document"]
+    subgraph DSDOC["<b>design/document"]
     direction TB
         DD1["5D model\n(not implemented)"]
     end
 
-    subgraph EXTRACT["extraction (A)"]
+    subgraph EXTRACT["<b>extraction (A)"]
     direction TB
         E1["--execute mode\n(0% built)"]
     end
 
-    subgraph WKSP["workspace init/split"]
+    subgraph WKSP["<b>workspace init/split"]
     direction TB
         W1["init/split\n(undefined)"]
     end
@@ -110,12 +110,9 @@ flowchart LR
     class ROOT root
     class D1,D2,D3,D4 green
     class D5,D6 grey
-    class G1 green
-    class G2 red
-    class G3 amber
+    class G1,G2,G3 green
     class G4,G5,G6 grey
-    class L1 red
-    class L2 amber
+    class L1,L2 green
     class L3,L4 grey
     class S1,S2 green
     class S3 grey

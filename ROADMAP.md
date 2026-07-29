@@ -6,10 +6,10 @@
 # --------------------------------------------------------------------------
 # ABSTRACT: AS-IS capabilities and staged delivery plan for the pickaxe CLI.
 # CREATED:  260612 BY: LogicWizards.NYC
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.6  (mirrors the pickaxe CLI's shipped version — this file
+# VERSION:  0.4.0  (mirrors the pickaxe CLI's shipped version — this file
 #           IS the canonical version record; pickaxe.py has no __version__
 #           constant. ALL .HANDOFF docs now mirror this same number and
 #           bump together at every wrap — no separate per-doc revision
@@ -22,9 +22,9 @@
 
 ---
 
-## AS-IS — v0.3.6 (current, reconciled 2026-07-29)
+## AS-IS — v0.4.0 (current, reconciled 2026-07-29)
 
-pickaxe is a **discovery, diagnostic, and backup** tool with a real 5D command surface (`discover`, `diagnose`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **98 passed**, 2026-07-29.
+pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D command surface (`discover`, `diagnose`, `deliver`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **119 passed**, 2026-07-29.
 
 **Shipped commands (verified against source + tests, not just docs):**
 
@@ -34,6 +34,8 @@ pickaxe is a **discovery, diagnostic, and backup** tool with a real 5D command s
 | `pickaxe discover commit-trends` | weekly/daily/monthly commit cadence, `--marathon-threshold`, `--holidays us`, `--save` | v0.3.3 (260615) |
 | `pickaxe discover drift [root]` | AHEAD/BEHIND/DIRTY/FLAGS table (`push-needed`\|`behind`\|`uncommitted`\|`no-remote`\|`fetch-failed`) | v0.3.6 |
 | `pickaxe diagnose [path]` | single-repo health: `missing_git`\|`missing_origin`\|`stripped_config`; gitlink/submodule-aware | v0.2.0; gitlink fix v0.3.2 (260603) |
+| `pickaxe diagnose instruction-bloat [root]` | noun-dispatch retrofit (A1) + whole-file/section line-threshold scan of instruction files (`--max-lines` 1000, `--max-section-lines` 50) (A3) | v0.4.0 (260729) |
+| `pickaxe deliver instruction-rollup <root> --from-report <findings.json> [--execute]` | first-ever `deliver` verb (A2); dry-run plan by default, extracts flagged blocks into new `.instructions.md` files with auto-filled frontmatter, idempotent (A4) | v0.4.0 (260729) |
 | `pickaxe scan [root]` | tool-worthiness scorer (header metadata, commit count, 7-point scale); `already_extracted` annotation | v0.1.0 scorer; annotation v0.3.4 |
 | `pickaxe backup <root> --to <dest>` | snapshot all repos (bundles + working-tree) to a portable backup dir; `--skip-working-tree`, `--force` | v0.3.5 |
 | `pickaxe restore <backup> --to <dest>` | restore repos from a pickaxe backup manifest | v0.3.5 |
@@ -54,10 +56,11 @@ All commands support `--format table\|json`; all except `restore` support `--sav
 
 **Gap summary:**
 
-| Capability                                      | v0.3.6                    |
+| Capability                                      | v0.4.0                    |
 |--------------------------------------------------|---------------------------|
 | Find + score candidates (`scan`)                  | ✅                          |
 | Repo health map + drift (`discover`, `diagnose`)  | ✅                          |
+| Instruction-bloat diagnostic + rollup delivery (`diagnose`/`deliver`) | ✅ (A1-A4) |
 | Backup / restore whole workspace                  | ✅                          |
 | Commit-cadence analytics                          | ✅                          |
 | Suggest extraction command                        | ✅ (prints it)              |
@@ -236,8 +239,8 @@ Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 - [ ] `pickaxe diagnose write-conflict` MVx — implement compare-before-write fingerprints for generated handoff updates: record the source hash at read time, re-read immediately before write, and fail closed with a reconciliation report when the hash changed. Keep file leases advisory and local-only until measured conflicts justify stronger coordination.
 - [ ] `pickaxe diagnose ticket-drift` — compare an Agile-Wizard ticket's checkbox/status claims against ground truth in the files it references (frontmatter fields, `lastModified`, git log) and flag divergence. Evidence: STORY `NEW-260107-AutoExec-A1S03` (created 2026-01-07) showed 0/5 acceptance criteria checked; direct inspection of the 5 referenced instruction files confirmed all 5 already had `requires:` added between 2026-01-07 and 2026-05-21 — the ticket sat stale for ~7 months while the underlying work was actually done (confirmed/corrected 2026-07-29). Same class of problem as `handoff-drift`, applied to Agile-Wizard tickets instead of STATE.md/handoff JSON. **Backlogged 2026-07-29 (user call): buildable-now per ROI table, intentionally not scoped further this session — pick up fresh, priority/evidence above still stands, no re-derivation needed.**
 - [ ] `pickaxe diagnose shell-sprawl` — detect terminal/shell process count and per-shell RAM footprint using the same before/after measurement pattern already proven by the venv/dependency-tree diagnostic above (3,162MB -> 595MB after exclusion). Flag when spawned-shell count or RAM exceeds a threshold. Targets EPIC `NEW-251204-AutoExec-A1E34` Success Criterion #2 ("Shell Isolation... RAM usage <100MB per test run vs 500+MB with shell spawning") and the original terminal-spawn machine crashes (LogicWizards + Fordham) cited as the reason AutoExecBOT/Federation dev-work was pinned. **Backlogged 2026-07-29 (user call): same status as ticket-drift above — buildable-now, deliberately deferred, not analyzed further this session.**
-- [ ] `pickaxe diagnose instruction-bloat` — **MVP scope, buildable now, NO Federation dependency (rescoped 2026-07-29 — user rejected the earlier FD-18/tier-gated framing as unnecessary analysis overhead).** Programmatically apply the line-count + module-scatter triggers already hand-documented in root `copilot-instructions.md`'s own "Proactive Context Optimization" / "Modularization Triggers" section against `.github/*.instructions.md`, `AGENTS.md`, and `SKILL.md` files: flag files >1000 lines (or a configurable threshold), flag >50 lines of module-specific pattern clustered under one heading in an otherwise-general file, honor the doc's own stated exemptions (<800 lines with no clear module boundary, <30-line patterns not worth extracting). No new taxonomy, no Federation tier awareness needed — the heuristic already exists as prose; this just runs it. Output populates that same doc's existing "📊 MODULARIZATION OPPORTUNITY DETECTED" prompt template with real numbers instead of manual eyeballing.
-- [ ] `pickaxe deliver instruction-rollup` — **MVP scope, buildable now.** Given a file + line-range flagged by `diagnose instruction-bloat`, extract the block to a new `.github/<module>.instructions.md` using the Instruction Inheritance Pattern frontmatter already specified in `copilot-instructions.md` (`description`/`applyTo`/`requires`/`version`/`tags`/`status`/`lastModified`/`maintainer`), and replace the extracted block in the source file with a one-line pointer. Dry-run by default per D-01 (discovery-only default); `--execute` to write. Does not require Federation tier classification — that richer version stays backlogged as `ai-labs/federation/DESIGN.md` FD-18, referenced but not a blocker for this MVP.
+- [x] `pickaxe diagnose instruction-bloat` — **shipped v0.4.0 (260729, A1/A3).** Programmatically applies the line-count + module-scatter triggers already hand-documented in root `copilot-instructions.md`'s own "Proactive Context Optimization" / "Modularization Triggers" section against instruction files (`AGENTS.md`, `SKILL.md`, `copilot-instructions.md`, `*.instructions.md`): flags files exceeding `--max-lines` (default 1000) and sections exceeding `--max-section-lines` (default 50). Retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`) first, mirroring `discover`'s existing pattern — 100% backward-compatible with the existing `pickaxe diagnose [path]` single-repo health check. 8 new tests (`TestDiagnoseInstructionBloat`), all green.
+- [x] `pickaxe deliver instruction-rollup` — **shipped v0.4.0 (260729, A2/A4), first-ever `deliver` verb.** Given a `--from-report <findings.json>` (the `diagnose instruction-bloat --format json` output, read verbatim), extracts each flagged block to a new `<slug>.instructions.md` using the Instruction Inheritance Pattern frontmatter (`description`/`requires`/`version`/`status`/`lastModified` auto-filled; `applyTo`/`tags`/`maintainer` left as TODO placeholders), and replaces the extracted block in the source file with a one-line pointer. Dry-run by default per D-01; `--execute` to write. Idempotent — dest-exists check runs before any source mutation. 10 new tests (`TestDeliverInstructionRollup`), all green.
 
 ### ROI prioritization (2026-07-29 discovery batch)
 
@@ -245,8 +248,8 @@ Commands follow the 5D surface. See `.HANDOFF/DESIGN.md` for full mapping.
 |---|---|---|---|
 | `diagnose ticket-drift` | S — reuses `handoff-drift`'s compare-and-report shape against a new target glob | HIGH — caught 1 real stale ticket on first use today; the same grep that found it matched 230 lines across 41 Agile-Wizard files, suggesting more exist | **Backlogged 2026-07-29** — buildable now, deferred to a future session (user call, not a value judgment) |
 | `diagnose shell-sprawl` | S-M — same measurement shape as the already-shipped venv/dependency-tree diagnostic | HIGH — directly targets the named, repeated real-machine-crash cause on 2 machines (LogicWizards + Fordham) | **Backlogged 2026-07-29** — buildable now, deferred to a future session (user call, not a value judgment) |
-| `diagnose instruction-bloat` | S-M — rescoped 2026-07-29: reuses `copilot-instructions.md`'s own already-written trigger thresholds + exemptions verbatim, no new taxonomy | HIGH — directly targets this session's own pain (compaction churn, re-derivation cost, half-a-day burned re-establishing context) | **Buildable now, MVP scope, NO Federation unpin required.** Full tier-aware version remains FD-18/backlogged, referenced only. |
-| `deliver instruction-rollup` | S-M — rescoped 2026-07-29: reuses the already-documented Instruction Inheritance Pattern frontmatter fields, dry-run-first per D-01 | HIGH — same rationale as instruction-bloat; this is the write-side that actually stops re-teaching an agent the same context every session | **Buildable now, MVP scope, NO Federation unpin required.** |
+| `diagnose instruction-bloat` | S-M — rescoped 2026-07-29: reuses `copilot-instructions.md`'s own already-written trigger thresholds + exemptions verbatim, no new taxonomy | HIGH — directly targets this session's own pain (compaction churn, re-derivation cost, half-a-day burned re-establishing context) | **Shipped v0.4.0 (260729).** Full tier-aware version remains FD-18/backlogged, referenced only. |
+| `deliver instruction-rollup` | S-M — rescoped 2026-07-29: reuses the already-documented Instruction Inheritance Pattern frontmatter fields, dry-run-first per D-01 | HIGH — same rationale as instruction-bloat; this is the write-side that actually stops re-teaching an agent the same context every session | **Shipped v0.4.0 (260729).** |
 - [ ] `pickaxe discover split-candidates` — score directories for SIDE-PROJECT/submodule extraction using independent release cadence, scoped instructions, tests, handoff ownership, consumer count, and repeated cross-agent edit overlap. Pilot against `Intune-Deployments`; output recommendation only, never mutate repositories.
 - [ ] `pickaxe deliver dirs` — clone missing repos and restore missing remotes from a canonical manifest (`repos.manifest.json`)
 - [ ] `pickaxe discover drift` — compare local inventory vs canonical GitHub set, report mismatches (read-only)
@@ -370,7 +373,7 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 ### Done criteria by milestone
 
 - [ ] `Track A` done (mis-numbered `v0.2` in the original plan — see Version plan reconciliation note): extraction pipeline runs end-to-end on at least one real carve-out
-- [ ] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state (`discover`/`diagnose`/`discover drift` ✅ shipped v0.2.0–v0.3.6; `deliver dirs`/`deliver drift` remediation still ❌)
+- [x] `v0.4` done: hygiene + drift commands catch and remediate missing repo/remote state (`discover`/`diagnose`/`discover drift` ✅ shipped v0.2.0–v0.3.6; `diagnose instruction-bloat`/`deliver instruction-rollup` ✅ shipped v0.4.0; `deliver dirs`/`deliver drift` remediation still ❌)
 - [ ] `v0.6` done: `pickaxe push <name>` completes sub → parent chain without manual git steps
 - [ ] `v0.8` done: `pickaxe fetch` populates `remote.version` and drift table is live
 - [ ] `v0.9` done: `pickaxe discover tools` generates deterministic Markdown from YAML, `pickaxe context resolve` excludes inactive evidence, and `pickaxe sync` emits `DELTA.md`
@@ -380,7 +383,7 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 
 ## Version plan
 
-### Shipped (ground truth, verified 2026-07-29 — 98/98 tests green)
+### Shipped (ground truth, verified 2026-07-29 — 119/119 tests green)
 
 | Version | Date | Theme | Key features |
 |---|---|---|---|
@@ -390,7 +393,8 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 | v0.3.3 | 260615 | Commit cadence (Track B) | `discover commit-trends`, `--format json` on scan/discover |
 | v0.3.4 | 260615 | Extraction annotation (Track B) | `scan` `already_extracted` field, `discover --submodules-only` |
 | v0.3.5 | — | Backup/restore (Track B) | `backup`, `restore` — full workspace snapshot + recovery |
-| v0.3.6 *(current)* | — | Remote drift (Track B) | `discover drift` — ahead/behind/dirty/flags table |
+| v0.3.6 | — | Remote drift (Track B) | `discover drift` — ahead/behind/dirty/flags table |
+| v0.4.0 *(current)* | 260729 | Instruction hygiene (Track B) | `diagnose` noun-dispatch retrofit (A1); first-ever `deliver` verb (A2); `diagnose instruction-bloat` (A3); `deliver instruction-rollup` (A4) |
 
 ### Planned (theme slots — not yet sequenced chronologically, see reconciliation note)
 

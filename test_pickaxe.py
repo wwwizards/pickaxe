@@ -9,6 +9,7 @@
 #     Section 4 - Backup:       v0.3.5 bundle + working-tree snapshot
 #     Section 5 - Restore:      v0.3.5 restore from manifest
 #     Section 6 - Drift:        v0.3.6 fetch + ahead/behind/dirty per repo
+#     Section 7 - Diagnose instruction-bloat / Deliver instruction-rollup: v0.4.0 (A1-A4)
 #
 #     Run all:              pytest test_pickaxe.py -v
 #     Smoke only:           pytest test_pickaxe.py -v -k Smoke
@@ -17,7 +18,8 @@
 # CREATED: 26-0526 - BY: wwwizards <github.com/wwwizards>
 # UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - backup/restore test sections (PX-B4)
 # UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - discover drift test section (PX-D1)
-# VERSION: v0.3.6
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat + deliver instruction-rollup test sections (A1-A4)
+# VERSION: v0.4.0
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # --------------------------------------------------------------------------
 
@@ -1174,4 +1176,234 @@ class TestDiscoverDrift:
         data = json.loads(result.stdout)
         assert isinstance(data, list)
         assert any(r["rel"] == "repo-a" for r in data)
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE NOUN-DISPATCH — backward compatibility  (A1)
+# --------------------------------------------------------------------------
+
+class TestDiagnoseNounDispatch:
+
+    def test_diagnose_nouns_constant_exists(self):
+        assert hasattr(pickaxe, "DIAGNOSE_NOUNS")
+        assert "instruction-bloat" in pickaxe.DIAGNOSE_NOUNS
+
+    def test_cli_diagnose_plain_path_still_works(self, repo_with_origin):
+        """`pickaxe diagnose <path>` (no noun) must keep working exactly as before."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", str(repo_with_origin), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["has_git"] is True
+        assert data["has_origin"] is True
+
+    def test_cli_diagnose_default_cwd_still_works(self):
+        """`pickaxe diagnose` with zero args must default to cwd, as before."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"), "diagnose", "--format", "json"],
+            capture_output=True, text=True, cwd=HERE,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["has_git"] is True
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE INSTRUCTION-BLOAT  (A3)
+# --------------------------------------------------------------------------
+
+def _write_bloated_instructions(root, rel_dir="."):
+    """
+    Write a synthetic instructions.md with a known line count and one
+    section ('Big Section') that exceeds a small custom --max-section-lines
+    threshold, plus one that doesn't ('Small Section'). Returns (file, total_lines).
+    """
+    target_dir = (root / rel_dir / ".github") if rel_dir != "." else (root / ".github")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    content = (
+        "# Title\n"
+        "\n"
+        "## Small Section\n"
+        "line1\n"
+        "\n"
+        "## Big Section\n"
+        "line1\n"
+        "line2\n"
+        "line3\n"
+        "line4\n"
+        "line5\n"
+    )
+    f = target_dir / "copilot-instructions.md"
+    f.write_text(content)
+    return f, 11
+
+
+class TestDiagnoseInstructionBloat:
+
+    def test_function_exists(self):
+        assert hasattr(pickaxe, "diagnose_instruction_bloat")
+
+    def test_no_findings_below_thresholds(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=1000)
+        assert findings == []
+
+    def test_whole_file_bloat_detected(self, tmp_path):
+        _, total = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=1000)
+        whole = [x for x in findings if x["kind"] == "whole-file"]
+        assert len(whole) == 1
+        assert whole[0]["start_line"] == 1
+        assert whole[0]["end_line"] == total
+
+    def test_section_bloat_detected(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        sections = [x for x in findings if x["kind"] == "section"]
+        assert len(sections) == 1
+        assert sections[0]["heading"] == "Big Section"
+        assert sections[0]["start_line"] == 6
+        assert sections[0]["end_line"] == 11
+
+    def test_finding_schema_keys(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        assert len(findings) == 2
+        for finding in findings:
+            for key in ("file", "start_line", "end_line", "reason", "kind", "heading"):
+                assert key in finding, f"missing key: {key}"
+
+    def test_nested_submodule_github_dir_found(self, tmp_path):
+        """Root scan (A1 decision) must find .github files nested under a subdir."""
+        _write_bloated_instructions(tmp_path, rel_dir="nested-submodule")
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        files = {f["file"] for f in findings}
+        assert any("nested-submodule" in f for f in files)
+
+    def test_never_mutates(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        before = {p: p.stat().st_mtime for p in tmp_path.rglob("*") if p.is_file()}
+        pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        after = {p: p.stat().st_mtime for p in tmp_path.rglob("*") if p.is_file()}
+        assert before == after
+
+    def test_cli_json_format(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", "instruction-bloat", str(tmp_path),
+             "--max-lines", "5", "--max-section-lines", "3", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert len(data) == 2
+
+    def test_cli_table_format_exit_zero(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", "instruction-bloat", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "finding(s)" in result.stdout
+
+
+# --------------------------------------------------------------------------
+# DELIVER INSTRUCTION-ROLLUP  (A2/A4)
+# --------------------------------------------------------------------------
+
+class TestDeliverInstructionRollup:
+
+    def test_functions_exist(self):
+        for fn in ("plan_instruction_rollup", "execute_instruction_rollup"):
+            assert hasattr(pickaxe, fn), f"missing: pickaxe.{fn}"
+
+    def test_dry_run_plan_does_not_mutate(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        before = f.read_text()
+        plans = pickaxe.plan_instruction_rollup(findings, str(tmp_path))
+        assert f.read_text() == before
+        assert len(plans) == 1
+        assert plans[0]["status"] == "planned"
+
+    def test_execute_creates_dest_with_frontmatter(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert len(results) == 1
+        assert results[0]["status"] == "extracted"
+        dest_abs = tmp_path / results[0]["dest"]
+        assert dest_abs.is_file()
+        text = dest_abs.read_text()
+        assert text.startswith("---\n")
+        assert "requires:" in text
+        assert "line1" in text  # extracted content travelled
+
+    def test_execute_replaces_source_lines_with_pointer(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        source_text = f.read_text()
+        assert "Extracted to" in source_text
+        assert "line5" not in source_text  # extracted body no longer in source
+
+    def test_execute_idempotent_second_run_skips(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        first = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert first[0]["status"] == "extracted"
+        second = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert second[0]["status"] == "already_extracted"
+
+    def test_cli_dry_run_default_leaves_files_untouched(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        report = tmp_path / "findings.json"
+        report.write_text(json.dumps(findings))
+        before = f.read_text()
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path), "--from-report", str(report)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert f.read_text() == before
+        assert "planned" in result.stdout
+
+    def test_cli_execute_writes_files(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        report = tmp_path / "findings.json"
+        report.write_text(json.dumps(findings))
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path),
+             "--from-report", str(report), "--execute"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "extracted" in result.stdout
+        dest_candidates = list((tmp_path / ".github").glob("big-section.instructions.md"))
+        assert len(dest_candidates) == 1
+
+    def test_cli_requires_from_report(self, tmp_path):
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+
+    def test_cli_deliver_noun_required(self, tmp_path):
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"), "deliver"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
 

@@ -18,7 +18,8 @@
 # UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - scan: already-extracted annotation (PX-B3); discover --submodules-only (PX-B1)
 # UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - backup/restore (PX-B4): bundle+working-tree snapshot; manifest.json; restore from bundle
 # UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
-# VERSION: v0.3.6
+# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat (A1/A3, noun-dispatch retrofit); deliver instruction-rollup (A2/A4, first-ever deliver verb)
+# VERSION: v0.4.0
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -28,8 +29,9 @@
 #
 # COMMANDS:
 #     scan      Score files as extraction candidates (version, commits, headers)
-#     discover  Repo health map | commit-trends | drift (planned)
-#     diagnose  Single-repo health inspection
+#     discover  Repo health map | commit-trends | drift
+#     diagnose  Single-repo health inspection | instruction-bloat
+#     deliver   instruction-rollup (dry-run by default, --execute to write)
 #     backup    Snapshot all repos (git bundles + working-tree) to a portable dir
 #     restore   Restore repos from a pickaxe backup manifest
 #
@@ -42,6 +44,12 @@
 #     python pickaxe.py discover ~/DATA/projects
 #     python pickaxe.py discover commit-trends --by week
 #     python pickaxe.py diagnose ~/DATA/projects/my-tool
+#     python pickaxe.py diagnose instruction-bloat ~/DATA/projects --format json --save
+#
+# EXAMPLES — deliver:
+#     python pickaxe.py diagnose instruction-bloat . --format json > findings.json
+#     python pickaxe.py deliver instruction-rollup . --from-report findings.json
+#     python pickaxe.py deliver instruction-rollup . --from-report findings.json --execute
 #
 # EXAMPLES — backup / restore:
 #     python pickaxe.py backup ~/DATA/projects --to ~/backups/LW-260721
@@ -326,6 +334,214 @@ def discover_remote_drift(root):
 
         results.append(entry)
 
+    return results
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE INSTRUCTION-BLOAT  (diagnose instruction-bloat — A1/A3, read-only)
+# --------------------------------------------------------------------------
+
+DIAGNOSE_NOUNS = {'instruction-bloat'}
+
+_INSTRUCTION_FILE_EXACT = {'AGENTS.md', 'SKILL.md', 'copilot-instructions.md'}
+_INSTRUCTION_FILE_SUFFIX = '.instructions.md'
+_HEADING_RE = re.compile(r'^(#{2,3})\s+(.+?)\s*$')
+
+
+def _is_instruction_file(path):
+    """True if path's basename matches a tracked instruction-file convention."""
+    base = os.path.basename(path)
+    return base in _INSTRUCTION_FILE_EXACT or base.endswith(_INSTRUCTION_FILE_SUFFIX)
+
+
+def _find_instruction_files(root):
+    """
+    Walk root for tracked instruction files (read-only). Reuses SKIP_DIRS so
+    nested submodule .github/ dirs are still found (the walk doesn't stop at
+    repo boundaries, same as discover()/scan()).
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            if _is_instruction_file(full):
+                found.append(full)
+    return found
+
+
+def _parse_sections(lines):
+    """
+    Split a Markdown file's lines into ## / ### sections.
+    Returns a list of {heading, start_line, end_line} (1-indexed, inclusive).
+    Content before the first heading is not returned as a section.
+    """
+    sections = []
+    current = None
+    for i, line in enumerate(lines, start=1):
+        m = _HEADING_RE.match(line)
+        if m:
+            if current is not None:
+                current['end_line'] = i - 1
+                sections.append(current)
+            current = {'heading': m.group(2).strip(), 'start_line': i, 'end_line': None}
+    if current is not None:
+        current['end_line'] = len(lines)
+        sections.append(current)
+    return sections
+
+
+def diagnose_instruction_bloat(root, max_lines=1000, max_section_lines=50):
+    """
+    Diagnose phase (read-only): scan root for instruction files and flag
+    whole-file line-count bloat and per-section (>max_section_lines) scatter,
+    per the triggers already documented in root copilot-instructions.md.
+
+    Returns a list of finding dicts:
+      {file, start_line, end_line, reason, kind, heading}
+    kind is 'whole-file' | 'section'. file is relative to root. Never mutates.
+    This is the diagnose->deliver handoff schema consumed by
+    `deliver instruction-rollup --from-report`.
+    """
+    root = os.path.abspath(root)
+    findings = []
+    for path in _find_instruction_files(root):
+        try:
+            with open(path, encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception:
+            continue
+        total = len(lines)
+        rel = os.path.relpath(path, root).replace(os.sep, '/')
+
+        if total > max_lines:
+            findings.append({
+                'file': rel,
+                'start_line': 1,
+                'end_line': total,
+                'reason': f'whole-file line count {total} exceeds --max-lines {max_lines}',
+                'kind': 'whole-file',
+                'heading': None,
+            })
+
+        for section in _parse_sections(lines):
+            span = section['end_line'] - section['start_line'] + 1
+            if span > max_section_lines:
+                findings.append({
+                    'file': rel,
+                    'start_line': section['start_line'],
+                    'end_line': section['end_line'],
+                    'reason': (f"section '{section['heading']}' spans {span} lines, "
+                               f"exceeds --max-section-lines {max_section_lines}"),
+                    'kind': 'section',
+                    'heading': section['heading'],
+                })
+    return findings
+
+
+# --------------------------------------------------------------------------
+# DELIVER INSTRUCTION-ROLLUP  (deliver instruction-rollup — A2/A4, mutating)
+# --------------------------------------------------------------------------
+
+DELIVER_NOUNS = {'instruction-rollup'}
+
+_ROLLUP_FRONTMATTER = """---
+description: {description}
+applyTo: '**'  # TODO: narrow this glob — auto-fill cannot infer scope
+requires:
+  - '.github/copilot-instructions.md'
+version: 0.1.0
+tags: []  # TODO: fill in relevant keywords
+status: experimental
+lastModified: {date}
+maintainer: TBD  # TODO: assign an owner
+---
+
+"""
+
+
+def _slugify(text):
+    slug = re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
+    return slug or 'rollup'
+
+
+def _rollup_dest_path(source_abs, finding):
+    heading = finding.get('heading')
+    slug = _slugify(heading) if heading else f"rollup-{finding['start_line']}-{finding['end_line']}"
+    return os.path.join(os.path.dirname(source_abs), f'{slug}.instructions.md')
+
+
+def plan_instruction_rollup(findings, root):
+    """
+    Discover phase for deliver — compute the plan without touching disk.
+    Returns list of {file, dest, start_line, end_line, heading, status}.
+    status: 'planned' | 'already_extracted'
+    """
+    root = os.path.abspath(root)
+    plans = []
+    for finding in findings:
+        source_abs = os.path.join(root, finding['file'])
+        dest_abs = _rollup_dest_path(source_abs, finding)
+        dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+        status = 'already_extracted' if os.path.isfile(dest_abs) else 'planned'
+        plans.append({
+            'file': finding['file'],
+            'dest': dest_rel,
+            'start_line': finding['start_line'],
+            'end_line': finding['end_line'],
+            'heading': finding.get('heading'),
+            'status': status,
+        })
+    return plans
+
+
+def execute_instruction_rollup(findings, root):
+    """
+    Deliver phase — mutating. Extracts each finding's line range into a new
+    scoped `*.instructions.md` file (Instruction Inheritance Pattern
+    frontmatter, auto-filled where possible) and leaves a pointer line in the
+    source. Idempotent: skips any finding whose destination file already
+    exists (repo's own Idempotent Script Pattern rule).
+
+    Returns list of {file, dest, status} where status is
+    'extracted' | 'already_extracted' | 'error: <msg>'.
+    """
+    root = os.path.abspath(root)
+    results = []
+    for finding in findings:
+        source_abs = os.path.join(root, finding['file'])
+        dest_abs = _rollup_dest_path(source_abs, finding)
+        dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+
+        if os.path.isfile(dest_abs):
+            results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'already_extracted'})
+            continue
+
+        try:
+            with open(source_abs, encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception as exc:
+            results.append({'file': finding['file'], 'dest': dest_rel, 'status': f'error: {exc}'})
+            continue
+
+        start, end = finding['start_line'], finding['end_line']
+        extracted = lines[start - 1:end]
+        heading = finding.get('heading') or os.path.splitext(os.path.basename(dest_abs))[0]
+        frontmatter = _ROLLUP_FRONTMATTER.format(
+            description=heading,
+            date=datetime.date.today().isoformat(),
+        )
+
+        with open(dest_abs, 'w', encoding='utf-8') as f:
+            f.write(frontmatter)
+            f.writelines(extracted)
+
+        pointer = f"> Extracted to [{os.path.basename(dest_rel)}]({dest_rel}) via `pickaxe deliver instruction-rollup`.\n"
+        new_lines = lines[:start - 1] + [pointer] + lines[end:]
+        with open(source_abs, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+
+        results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'extracted'})
     return results
 
 
@@ -1061,6 +1277,37 @@ def _render_drift_table(results):
               + ', '.join(r['rel'] for r in needs_action))
 
 
+def render_instruction_bloat_table(findings):
+    """Print instruction-bloat findings to stdout."""
+    print(f"\n{'KIND':<10}  {'LINES':>11}  {'FILE':<50}  REASON")
+    print(f"{'-'*10}  {'-'*11}  {'-'*50}  {'-'*40}")
+    for f in findings:
+        span = f"{f['start_line']}-{f['end_line']}"
+        print(f"{f['kind']:<10}  {span:>11}  {f['file']:<50}  {f['reason']}")
+    print(f"\n{len(findings)} finding(s).")
+
+
+def render_rollup_plan_table(plans):
+    """Print a deliver instruction-rollup dry-run plan to stdout."""
+    print(f"\n{'STATUS':<17}  {'LINES':>11}  {'SOURCE':<40}  DEST")
+    print(f"{'-'*17}  {'-'*11}  {'-'*40}  {'-'*40}")
+    for p in plans:
+        span = f"{p['start_line']}-{p['end_line']}"
+        print(f"{p['status']:<17}  {span:>11}  {p['file']:<40}  {p['dest']}")
+    planned = sum(1 for p in plans if p['status'] == 'planned')
+    print(f"\n{planned}/{len(plans)} extraction(s) planned. Re-run with --execute to write files.")
+
+
+def render_rollup_result_table(results):
+    """Print deliver instruction-rollup execution results to stdout."""
+    print(f"\n{'STATUS':<17}  DEST")
+    print(f"{'-'*17}  {'-'*60}")
+    for r in results:
+        print(f"{r['status']:<17}  {r['dest']}")
+    ok = sum(1 for r in results if r['status'] == 'extracted')
+    print(f"\n{ok}/{len(results)} extracted.")
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -1106,7 +1353,18 @@ def _cmd_discover(args):
 
 
 def _cmd_diagnose(args):
-    path = os.path.abspath(args.path or '.')
+    noun = getattr(args, 'noun', None)
+
+    if noun == 'instruction-bloat':
+        _cmd_diagnose_instruction_bloat(args)
+        return
+
+    # Default: single-repo health check. Treat noun as path if it looks like a path.
+    if noun and noun not in DIAGNOSE_NOUNS:
+        path = os.path.abspath(noun)
+    else:
+        path = os.path.abspath(getattr(args, 'path', None) or '.')
+
     print(f"[pickaxe diagnose] {path}", file=sys.stderr)
     result = diagnose(path)
     if args.format == 'json':
@@ -1117,6 +1375,77 @@ def _cmd_diagnose(args):
         sessions_dir = os.path.join(path, '.pickaxe', 'SESSIONS')
         saved = _save_session_event('diagnose', path, _build_diagnose_summary(result), sessions_dir)
         print(f"[pickaxe] session event saved → {saved}", file=sys.stderr)
+
+
+def _cmd_diagnose_instruction_bloat(args):
+    """Handler for: pickaxe diagnose instruction-bloat"""
+    root = os.path.abspath(getattr(args, 'path', None) or '.')
+    max_lines = getattr(args, 'max_lines', 1000)
+    max_section_lines = getattr(args, 'max_section_lines', 50)
+
+    print(f'[pickaxe diagnose instruction-bloat] scanning {root} ...', file=sys.stderr)
+    findings = diagnose_instruction_bloat(root, max_lines=max_lines, max_section_lines=max_section_lines)
+
+    fmt = getattr(args, 'format', 'table')
+    if fmt == 'json':
+        print(json.dumps(findings, indent=2))
+    else:
+        render_instruction_bloat_table(findings)
+
+    if getattr(args, 'save', False):
+        summary = {
+            'root': root,
+            'findings': len(findings),
+            'whole_file': sum(1 for f in findings if f['kind'] == 'whole-file'),
+            'section': sum(1 for f in findings if f['kind'] == 'section'),
+        }
+        sessions_dir = os.path.join(root, '.pickaxe', 'SESSIONS')
+        saved = _save_session_event('diagnose.instruction-bloat', root, summary, sessions_dir)
+        print(f"[pickaxe] session event saved → {saved}", file=sys.stderr)
+
+
+def _cmd_deliver_instruction_rollup(args):
+    """Handler for: pickaxe deliver instruction-rollup"""
+    report_path = getattr(args, 'from_report', None)
+    if not report_path:
+        print('[pickaxe] error: deliver instruction-rollup requires --from-report <findings.json>',
+              file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(report_path):
+        print(f'[pickaxe] error: report not found: {report_path}', file=sys.stderr)
+        sys.exit(1)
+
+    with open(report_path, encoding='utf-8') as f:
+        findings = json.load(f)
+
+    root = os.path.abspath(getattr(args, 'root', None) or '.')
+    execute = getattr(args, 'execute', False)
+    fmt = getattr(args, 'format', 'table')
+
+    if not execute:
+        print(f'[pickaxe deliver instruction-rollup] DRY RUN — plan against {root}', file=sys.stderr)
+        plans = plan_instruction_rollup(findings, root)
+        if fmt == 'json':
+            print(json.dumps(plans, indent=2))
+        else:
+            render_rollup_plan_table(plans)
+        return
+
+    print(f'[pickaxe deliver instruction-rollup] EXECUTING against {root}', file=sys.stderr)
+    results = execute_instruction_rollup(findings, root)
+    if fmt == 'json':
+        print(json.dumps(results, indent=2))
+    else:
+        render_rollup_result_table(results)
+
+
+def _cmd_deliver(args):
+    noun = getattr(args, 'noun', None)
+    if noun == 'instruction-rollup':
+        _cmd_deliver_instruction_rollup(args)
+        return
+    print(f'[pickaxe] error: unknown deliver target: {noun}', file=sys.stderr)
+    sys.exit(1)
 
 
 def _render_backup_table(manifest, dest):
@@ -1264,13 +1593,41 @@ def main():
 
     # --- diagnose ---
     p_diagnose = sub.add_parser(
-        'diagnose', help='Inspect repo health (missing .git, origin, config)'
+        'diagnose', help='Repo health (default) or sub-target: instruction-bloat'
     )
-    p_diagnose.add_argument('path', nargs='?', default='.', help='Repo path to inspect')
+    p_diagnose.add_argument(
+        'noun', nargs='?', default=None, metavar='target',
+        help='Sub-target: instruction-bloat | (default: single-repo health check)',
+    )
+    p_diagnose.add_argument('path', nargs='?', default='.',
+                             help='Repo/root path to inspect (ignored when noun is a known sub-target)')
     p_diagnose.add_argument('--format', '-f', choices=['table', 'json'], default='table')
     p_diagnose.add_argument('--save', action='store_true',
                              help='Append session event to {path}/.pickaxe/SESSIONS/')
+    # instruction-bloat flags (only used when noun=instruction-bloat)
+    p_diagnose.add_argument('--max-lines', type=int, default=1000, metavar='N',
+                             help='Whole-file line-count threshold to flag as bloated (default: 1000)')
+    p_diagnose.add_argument('--max-section-lines', type=int, default=50, metavar='N',
+                             help='Per-section (##/###) line-count threshold for the scattered-pattern rule (default: 50)')
     p_diagnose.set_defaults(func=_cmd_diagnose)
+
+    # --- deliver ---
+    p_deliver = sub.add_parser(
+        'deliver',
+        help='Execute a treatment plan (dry-run by default): instruction-rollup',
+    )
+    p_deliver.add_argument(
+        'noun', choices=sorted(DELIVER_NOUNS), metavar='target',
+        help='Sub-target: instruction-rollup',
+    )
+    p_deliver.add_argument('root', nargs='?', default='.', metavar='root',
+                            help='Workspace root the report paths are relative to (default: cwd)')
+    p_deliver.add_argument('--from-report', dest='from_report', default=None, metavar='FILE',
+                            help='diagnose instruction-bloat --format json output to act on')
+    p_deliver.add_argument('--execute', action='store_true',
+                            help='Write files (default: dry-run, prints the plan only)')
+    p_deliver.add_argument('--format', '-f', choices=['table', 'json'], default='table')
+    p_deliver.set_defaults(func=_cmd_deliver)
 
     # --- scan ---
     p_scan = sub.add_parser(
