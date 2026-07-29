@@ -6,13 +6,14 @@
 # --------------------------------------------------------------------------
 # ABSTRACT: AS-IS capabilities and staged delivery plan for the pickaxe CLI.
 # CREATED:  260612 BY: LogicWizards.NYC
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::fleet.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
 # VERSION:  0.3.6  (mirrors the pickaxe CLI's shipped version — this file
 #           IS the canonical version record; pickaxe.py has no __version__
-#           constant. Bump this at every wrap alongside the AS-IS section,
-#           not on a separate doc-revision cadence.)
+#           constant. ALL .HANDOFF docs now mirror this same number and
+#           bump together at every wrap — no separate per-doc revision
+#           cadence, per 2026-07-29 decision.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```

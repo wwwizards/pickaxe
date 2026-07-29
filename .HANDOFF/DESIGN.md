@@ -11,12 +11,11 @@
 #     alternatives were rejected. Read before implementing new features.
 #     Acronym locked 2026-06-16. Release target: 2026-07-04 (Independence Day).
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::fleet.SOLOMON
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: SOLOMON
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.3.1  (this doc's own revision counter — NOT the pickaxe CLI
-#           version, and NOT ROADMAP.md's revision counter. CLI is
-#           currently v0.3.6; see ../ROADMAP.md AS-IS section.)
+# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+#           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```

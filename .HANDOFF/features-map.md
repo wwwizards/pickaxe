@@ -16,7 +16,8 @@
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.1.1
+# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+#           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```

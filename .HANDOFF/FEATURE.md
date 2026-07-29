@@ -10,9 +10,9 @@
 #     initialization and splitting via the HOBOTS cascade model.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
-# VERSION:  0.2.1  (this doc's own revision counter — NOT the CLI version.
-#           CLI version lives in ../ROADMAP.md header, currently v0.3.6.
-#           Live deliverable/gap tracking now lives in features-map.md.)
+# VERSION:  0.3.6  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+#           canonical. All .HANDOFF docs bump together at every wrap.
+#           Live deliverable tracker: features-map.md + features-listing.md.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
