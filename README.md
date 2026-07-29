@@ -107,6 +107,22 @@ Output columns:
 
 Repos flagged `no-remote` have no origin configured — they exist only on disk (and in any pickaxe backup).
 
+### Instruction bloat — `diagnose instruction-bloat` & `deliver instruction-rollup`
+
+`pickaxe diagnose instruction-bloat` scans instruction/handoff/memory files for the 200-line reliability threshold (per the [200-line reliability rule](https://github.com/wwwizards/ai-labs)) and reports oversized files plus oversized sections within them. `pickaxe deliver instruction-rollup` consumes that report and extracts oversized sections into scoped child files, leaving a pointer stub in the original — dry-run by default, `--execute` to write.
+
+```bash
+# Report oversized instruction files (dry-run, read-only)
+python pickaxe.py diagnose instruction-bloat ~/DATA/projects --format json --save
+
+# Pipe findings into a rollup plan
+python pickaxe.py diagnose instruction-bloat . --format json > findings.json
+python pickaxe.py deliver instruction-rollup . --from-report findings.json
+
+# Actually write the extracted files + pointer stubs
+python pickaxe.py deliver instruction-rollup . --from-report findings.json --execute
+```
+
 ```bash
 # Quick table scan — print ranked candidates to terminal
 python pickaxe.py scan ~/DATA/projects
@@ -255,6 +271,8 @@ The `AUTODOC:` field closes the loop — it tells pickaxe (and future readers) h
 - [x] `backup` — bundle all repos + working-tree snapshot to portable dir; `manifest.json` inventory
 - [x] `restore` — restore repos from pickaxe backup; re-attaches origin remotes
 - [x] `discover drift` — fetch + ahead/behind/dirty per repo; flags push-needed/behind/uncommitted/no-remote
+- [x] `diagnose instruction-bloat` — flag instruction/handoff files over the 200-line reliability threshold
+- [x] `deliver instruction-rollup` — extract oversized instruction sections into scoped children + pointer stub (dry-run by default, `--execute` to write)
 - [ ] `deliver drift` — apply fixes from drift report
 - [ ] `--execute` — full git-filter-repo extraction pipeline
 - [ ] GitHub Actions integration: run on PR to flag new tool-worthy scripts

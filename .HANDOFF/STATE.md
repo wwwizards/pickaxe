@@ -7,7 +7,7 @@
 # ABSTRACT: Live state of the pickaxe repository, including shipped commands,
 #           active design contracts, blockers, and next implementation work.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (diagnose noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: JN (Joe Negron -- LogicWizards.NYC)
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
 # VERSION:  0.4.0
@@ -20,7 +20,7 @@
 
 ## Snapshot
 
-- Shipped CLI is now v0.4.0. This session shipped A1-A4 (Track B, repo-hygiene diagnostics, unrelated to the Federation contract below): `diagnose` noun-dispatch retrofit (`DIAGNOSE_NOUNS`, A1), first-ever top-level `deliver` subparser + `_cmd_deliver` (A2), `diagnose instruction-bloat` (A3), `deliver instruction-rollup` (A4). 21 new tests, 119/119 total green. See ROADMAP.md AS-IS table + `features-listing.md` for full details.
+- Shipped CLI is now v0.4.0 (260729) — `diagnose instruction-bloat` (A1/A3) + `deliver instruction-rollup` (A2/A4, first-ever `deliver` verb), 21 new tests, 119/119 total. See [SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md](SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md).
 - [AI Training Manifest Contract](AI-TRAINING-MANIFEST.md) v0.1.0 is the canonical design for nearest-owner routing, active-context resolution, evidence isolation, and governed promotion.
 - Pickaxe is the sole Federation resolver, classifier, synchronizer, and promoter. ai-labs owns protocol and promotion targets; ai-labs-toolkit may consume output but does not duplicate traversal or classification.
 - The contract is design-only. `pickaxe context discover|route|resolve|check|promote` are not implemented yet.
@@ -46,13 +46,15 @@
 
 ## What shipped in v0.4.0 (260729)
 
-- `DIAGNOSE_NOUNS = {'instruction-bloat'}` — `diagnose` retrofitted with noun-dispatch, mirroring `discover`'s existing pattern (A1); 100% backward-compatible with the existing single-arg `diagnose [path]` invocation
-- `DELIVER_NOUNS = {'instruction-rollup'}` — first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch (A2)
-- `diagnose_instruction_bloat(root, max_lines=1000, max_section_lines=50)` — recursive scan (mirrors `discover`/`scan` walk + `SKIP_DIRS`) of `AGENTS.md`, `SKILL.md`, `copilot-instructions.md`, `*.instructions.md` files; flags whole-file and per-section (`## `/`### ` heading) line-count bloat (A3)
-- `plan_instruction_rollup(findings, root)` / `execute_instruction_rollup(findings, root)` — extracts a flagged block into a new `<slug>.instructions.md` using the Instruction Inheritance Pattern frontmatter; dry-run by default (D-01), `--execute` to write, idempotent (dest-exists check precedes any source mutation) (A4)
-- `--from-report <findings.json>` — the only diagnose→deliver handoff mechanism for the MVP (reads `diagnose instruction-bloat --format json` output verbatim)
-- `test_pickaxe.py` — 119 tests total (21 new: 3 `TestDiagnoseNounDispatch`, 8 `TestDiagnoseInstructionBloat`, 10 `TestDeliverInstructionRollup`), all green
-- ROADMAP.md, FEATURE.md, DESIGN.md, features-listing.md, features-map.md — all bumped to v0.4.0 together per the 2026-07-29 version-mirroring decision
+- `diagnose instruction-bloat` (A1/A3) — noun-dispatch retrofit onto `diagnose`; flags
+instruction/handoff/memory files over the 200-line reliability threshold, plus oversized sections within them (`--format json`, `--save`)
+- `deliver instruction-rollup` (A2/A4) — first-ever `deliver` verb shipped to production;
+consumes a `diagnose instruction-bloat --format json` report via `--from-report`, plans extraction of oversized sections into scoped child files + pointer stub (dry-run by default, `--execute` to write)
+- `test_pickaxe.py` — 119 tests total (21 new: `TestDiagnoseNounDispatch` 3,
+`TestDiagnoseInstructionBloat` 9, `TestDeliverInstructionRollup` 9), all green
+- README.md, TESTING.md — synced with instruction-bloat/instruction-rollup usage + test
+matrix (260729, post-hoc during reconciliation session)
+- Committed `d9b3aa2` on `main`, pushed to `wwwizards/pickaxe`
 
 ## What shipped in v0.3.4 (260615)
 

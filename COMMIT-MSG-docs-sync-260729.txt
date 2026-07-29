@@ -1,0 +1,22 @@
+docs: sync README/TESTING/STATE for v0.4.0 + session archive
+
+The v0.4.0 commit (d9b3aa2) shipped diagnose instruction-bloat and
+deliver instruction-rollup (A1-A4, first-ever deliver verb) but did
+not sync README.md, TESTING.md, or STATE.md's header/snapshot. This
+commit closes that gap, found during a reconciliation session that
+compared protocol expectations against what actually shipped.
+
+- README.md: usage section for diagnose instruction-bloat / deliver
+  instruction-rollup; roadmap checklist entries added
+- TESTING.md: test matrix corrected to measured class counts (was
+  stale even pre-v0.4.0: TestDiagnose 14->13, TestDiscover 15->16);
+  6 new v0.4.0 classes added; run history row for 119/119 @ 181s
+- STATE.md: header VERSION 0.3.4->0.4.0, UPDATED 260725->260729;
+  Snapshot + Shipped-baseline sections now reflect v0.4.0
+- .HANDOFF/SESSIONS/260729-Reconciliation-Handoff-forQ3Features/
+  SESSION.md: new session-close summary (README.md in that folder
+  is the retroactively-archived prompt; handoff-deltas.md is the
+  15-row gap matrix; this is the closing summary)
+- .HANDOFF/LIGHTBULB-LOG.md: LB-02 (recurring run_in_terminal vs.
+  ai_labs_run slip)
+- Hard-wrap reflowed across all touched .md files
