@@ -88,3 +88,35 @@ Claude Sonnet 5 (copilot)
 self-caught (agent noticed the stray tool call in its own next step, before any user callout, and corrected before proceeding)
 
 ---
+
+## LB-03 — `deliver instruction-rollup --execute` silently drops content for every extraction after the first
+
+**Date:** 2026-07-29
+**Version:** v0.4.0
+**Category:** data loss / mutation-order bug
+
+### What happened
+
+Ran `diagnose instruction-bloat` + `deliver instruction-rollup --execute` against a sandboxed copy of the root repo's `.github/copilot-instructions.md` (1134 lines, 8 findings: 1 whole-file + 7 sections). All 8 extractions reported `extracted` with no errors. Inspecting the output: the whole-file extraction (`rollup-1-1134.instructions.md`, 947 lines) has real content. All 7 section-level extraction files (`tdd-guardrails-...md`, `conventions-patterns-...md`, etc.) contain ONLY the YAML frontmatter template (11 lines) — zero body content. The source file was reduced to 8 pointer-stub lines with the real section text preserved nowhere except inside the whole-file dump.
+
+### Root cause (inferred — not yet traced in code)
+
+Extractions are almost certainly applied sequentially against the file as it mutates in-place, not against a fixed pre-extraction snapshot of the original content. The whole-file finding (lines 1-1134) runs first, truncates the source to a pointer stub. Every subsequent section extraction (targeting original line ranges like 124-227) then reads from the already-stubbed, much-shorter file — landing past EOF or on stub lines, producing empty body content, but apparently not erroring.
+
+### Fix
+
+Not yet applied — needs the actual extraction loop read. Likely fix: snapshot source file content once before applying any extraction in the plan, and/or skip/reorder overlapping ranges (a whole-file finding should not co-execute with section findings it fully contains) rather than trusting `diagnose`'s output as non-overlapping.
+
+### Lesson
+
+**Never run `--execute` against a live file without a sandbox dry-run first when findings include overlapping ranges (e.g. a whole-file + section findings).** This is precisely why the sandbox-copy step existed in this session's plan — had this run directly against the live root `.github/copilot-instructions.md`, 7 of 8 extracted sections would have silently lost their content with a 100%-success status line and no error.
+
+### LLM
+
+Claude Sonnet 5 (copilot)
+
+### Found by
+
+Caught via sandbox test before touching any live file (root repo's copilot-instructions.md was never at risk)
+
+---
