@@ -13,9 +13,11 @@
 #     AS-IS/TO-BE narrative this file distills into trackable checkboxes.
 # CREATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped, 119 tests green
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03 fix, 121 tests green
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-04 fix, 123 tests green
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.4.0  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+# VERSION:  0.4.2  (mirrors the pickaxe CLI version; ../ROADMAP.md is
 #           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
@@ -39,7 +41,7 @@
 - [x] **A1** — retrofit `diagnose` with noun-dispatch (`DIAGNOSE_NOUNS`), mirroring `discover`'s existing pattern — shipped v0.4.0
 - [x] **A2** — add the first-ever top-level `deliver` subparser + `_cmd_deliver` dispatch — shipped v0.4.0
 - [x] **A3** — `diagnose instruction-bloat` (depends on A1) — shipped v0.4.0
-- [x] **A4** — `deliver instruction-rollup` (depends on A2 + A3's output contract) — shipped v0.4.0
+- [x] **A4** — `deliver instruction-rollup` (depends on A2 + A3's output contract) — shipped v0.4.0; **LB-03 data-loss bugfix shipped v0.4.1** (overlapping whole-file + section findings now `skipped_overlap` instead of silently emptied); **LB-04 dest-routing bugfix shipped v0.4.2** (`.github/` sources now extract to `.github/instructions/` for VS Code auto-discovery; pointer links resolve relative to the source file's own directory)
 
 Everything below A-tier is reference/backlog — captured so it isn't lost, not something to decide today.
 

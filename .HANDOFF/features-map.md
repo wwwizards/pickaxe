@@ -14,9 +14,11 @@
 #     and ROADMAP.md (AS-IS/TO-BE narrative).
 # CREATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped, tests green (119 total)
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03 fix, tests green (121 total)
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-04 fix, tests green (123 total)
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.4.0  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+# VERSION:  0.4.2  (mirrors the pickaxe CLI version; ../ROADMAP.md is
 #           canonical. All .HANDOFF docs bump together at every wrap.)
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
@@ -59,7 +61,7 @@ flowchart LR
     subgraph DELIVER["<b>deliver"]
     direction TB
         L1["deliver subparser\n(v0.4.0)"]
-        L2["instruction-rollup\n(v0.4.0)"]
+        L2["instruction-rollup\n(v0.4.2, LB-03/04 fixed)"]
         L3["handoff-rollup\n(undefined, B6)"]
         L4["dirs/drift/docs\n(undefined, B7-9)"]
     end

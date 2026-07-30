@@ -7,9 +7,10 @@
 # ABSTRACT: AS-IS capabilities and staged delivery plan for the pickaxe CLI.
 # CREATED:  260612 BY: LogicWizards.NYC
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
+# UPDATED:  260730 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03/LB-04 fixes (data-loss + dest-routing), root-repo dogfood validation, 123 tests green
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.4.0  (mirrors the pickaxe CLI's shipped version — this file
+# VERSION:  0.4.2  (mirrors the pickaxe CLI's shipped version — this file
 #           IS the canonical version record; pickaxe.py has no __version__
 #           constant. ALL .HANDOFF docs now mirror this same number and
 #           bump together at every wrap — no separate per-doc revision
@@ -24,7 +25,7 @@
 
 ## AS-IS — v0.4.1 (current, reconciled 2026-07-29)
 
-pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D command surface (`discover`, `diagnose`, `deliver`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **121 passed**, 2026-07-29 (v0.4.1 adds 2 regression tests for LB-03).
+pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D command surface (`discover`, `diagnose`, `deliver`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **123 passed**, 2026-07-30 (v0.4.2 adds LB-04 dest-routing fix + regression tests on top of v0.4.1's LB-03 data-loss fix).
 
 **Shipped commands (verified against source + tests, not just docs):**
 
@@ -35,7 +36,7 @@ pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D
 | `pickaxe discover drift [root]` | AHEAD/BEHIND/DIRTY/FLAGS table (`push-needed`\|`behind`\|`uncommitted`\|`no-remote`\|`fetch-failed`) | v0.3.6 |
 | `pickaxe diagnose [path]` | single-repo health: `missing_git`\|`missing_origin`\|`stripped_config`; gitlink/submodule-aware | v0.2.0; gitlink fix v0.3.2 (260603) |
 | `pickaxe diagnose instruction-bloat [root]` | noun-dispatch retrofit (A1) + whole-file/section line-threshold scan of instruction files (`--max-lines` 1000, `--max-section-lines` 50) (A3) | v0.4.0 (260729) |
-| `pickaxe deliver instruction-rollup <root> --from-report <findings.json> [--execute]` | first-ever `deliver` verb (A2); dry-run plan by default, extracts flagged blocks into new `.instructions.md` files with auto-filled frontmatter, idempotent (A4); overlapping whole-file+section findings now reported `skipped_overlap` (LB-03 fix) | v0.4.0 (260729); LB-03 fix v0.4.1 (260729) |
+| `pickaxe deliver instruction-rollup <root> --from-report <findings.json> [--execute]` | first-ever `deliver` verb (A2); dry-run plan by default, extracts flagged blocks into new `.instructions.md` files with auto-filled frontmatter, idempotent (A4); overlapping whole-file+section findings now reported `skipped_overlap` (LB-03 fix); `.github/` sources route to `.github/instructions/` for VS Code auto-discovery (LB-04 fix) | v0.4.0 (260729); LB-03 fix v0.4.1 (260729); LB-04 fix v0.4.2 (260729) |
 | `pickaxe scan [root]` | tool-worthiness scorer (header metadata, commit count, 7-point scale); `already_extracted` annotation | v0.1.0 scorer; annotation v0.3.4 |
 | `pickaxe backup <root> --to <dest>` | snapshot all repos (bundles + working-tree) to a portable backup dir; `--skip-working-tree`, `--force` | v0.3.5 |
 | `pickaxe restore <backup> --to <dest>` | restore repos from a pickaxe backup manifest | v0.3.5 |
@@ -82,6 +83,39 @@ These Agile-Wizard tickets reference specific pickaxe capabilities (shipped or p
 
 - [NEW-260107-AutoExec-A1S03-STORY-Add-Requires-Frontmatter-5-Instructions](../../Agile-Wizard/DATA/LogicWizards-NYC/Idea-Map/STORIES/NEW-260107-AutoExec-A1S03-STORY-Add-Requires-Frontmatter-5-Instructions.md) — cites the exact `diagnose ticket-drift` evidence (0/5 vs actual 5/5 done) used as this candidate's justification below in Track B.
 - [NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold](../../Agile-Wizard/DATA/Phoenix-CPAs/BACKLOG/NEW-260528-IntuneDeployments-C1S03-STORY-ART-Repo-Split-Pre-Scaffold.md) — assumes a `repos.manifest.json` entry stub and a pickaxe `deliver` command for manifest-driven clone post-split; both remain unbuilt (Track B backlog, `PX-01`/`PX-03` in `.HANDOFF/STATE.md`) — flagged so that STORY's acceptance criteria aren't checked off against tooling that doesn't exist yet.
+
+### Dogfood validation: root `.github/copilot-instructions.md` (2026-07-30)
+
+A manual "crawl before walk" trim of the repo's own live instructions file (1134 → 1036
+lines, -8.6%, two safe cuts: dead terminal-strategy history + duplicated release history)
+was cross-checked against `pickaxe diagnose instruction-bloat .`. Result: the scanner
+**already flags every section a human found by hand**, with zero new detection logic
+needed:
+
+| Section | Lines | Flagged by pickaxe |
+|---|---|---|
+| Whole file | 1036 (>1000) | ✅ |
+| `TDD Guardrails (MANDATORY)` | 104 | ✅ |
+| `Conventions & patterns (project-specific)` | 103 | ✅ |
+| `Validation Scripts Testing Standard (MANDATORY)` | 112 | ✅ |
+| `Proactive Context Optimization (MANDATORY)` | 53 | ✅ |
+| `Proactive Agile Governance (MANDATORY)` | 126 (largest single section) | ✅ |
+| `Agile-DevOps Workflow` | 54 | ✅ |
+
+Both `Proactive-*` blocks trace to 2025-11-23 (`git log -S`), essentially the file's
+founding week — they were among the first rules ever written for this repo, not recent
+additions. `Proactive Agile Governance` references Idea-Map (still live/current per
+260+ workspace hits and the 2026-05-27 handoff) but is 126 lines of MANDATORY prompt
+template — a strong candidate for the next controlled trial of `deliver
+instruction-rollup`, since detection is already proven correct here.
+
+**Implication:** the blocker to using pickaxe as the "force multiplier" the manual crawl
+was building toward isn't tooling capability — it's confidence, after a prior
+`--execute` run on this same file was reverted earlier in this repo's history. Next
+step is a controlled dry-run comparison (no `--execute`) against these 6 known-good
+targets before re-attempting a live rollup. See
+[`instructions-bloat-backlog.md`](/memories/repo/instructions-bloat-backlog.md) (repo
+memory, root workspace) for full session notes.
 
 ---
 
@@ -395,7 +429,8 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 | v0.3.5 | — | Backup/restore (Track B) | `backup`, `restore` — full workspace snapshot + recovery |
 | v0.3.6 | — | Remote drift (Track B) | `discover drift` — ahead/behind/dirty/flags table |
 | v0.4.0 | 260729 | Instruction hygiene (Track B) | `diagnose` noun-dispatch retrofit (A1); first-ever `deliver` verb (A2); `diagnose instruction-bloat` (A3); `deliver instruction-rollup` (A4) |
-| v0.4.1 *(current)* | 260729 | Bugfix (Track B) | Fixed LB-03: `deliver instruction-rollup` silently dropped every extraction after the first when a whole-file finding overlapped section findings. Snapshot-before-mutate + `skipped_overlap` status; caught via sandbox test before it ever touched a live file. |
+| v0.4.1 | 260729 | Bugfix (Track B) | Fixed LB-03: `deliver instruction-rollup` silently dropped every extraction after the first when a whole-file finding overlapped section findings. Snapshot-before-mutate + `skipped_overlap` status; caught via sandbox test before it ever touched a live file. |
+| v0.4.2 *(current)* | 260729 | Bugfix (Track B) | Fixed LB-04: `.github/` sources extracted to `.github/` directly, which VS Code never auto-discovers. Now routes to `.github/instructions/`; pointer links resolve relative to the source file's own directory. Dogfood-validated 260730 against root repo's live `copilot-instructions.md` via `diagnose instruction-bloat`. |
 
 ### Planned (theme slots — not yet sequenced chronologically, see reconciliation note)
 

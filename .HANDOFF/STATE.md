@@ -7,10 +7,10 @@
 # ABSTRACT: Live state of the pickaxe repository, including shipped commands,
 #           active design contracts, blockers, and next implementation work.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
-# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
+# UPDATED:  260730 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
 # ARCHITECT: JN (Joe Negron -- LogicWizards.NYC)
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
-# VERSION:  0.4.0
+# VERSION:  0.4.2
 # STAGE:    ACTIVE
 # --------------------------------------------------------------------------
 ```
@@ -20,7 +20,7 @@
 
 ## Snapshot
 
-- Shipped CLI is now v0.4.0 (260729) — `diagnose instruction-bloat` (A1/A3) + `deliver instruction-rollup` (A2/A4, first-ever `deliver` verb), 21 new tests, 119/119 total. See [SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md](SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md).
+- Shipped CLI is now v0.4.2 (260729) — `diagnose instruction-bloat` (A1/A3) + `deliver instruction-rollup` (A2/A4, first-ever `deliver` verb), plus two follow-on bugfixes: LB-03 (data loss on overlapping findings) and LB-04 (`.github/` sources now route to `.github/instructions/` for VS Code auto-discovery). 123/123 tests green. Dogfood-validated 260730 by running `diagnose instruction-bloat` against the root repo's live `.github/copilot-instructions.md` (correctly flagged all 6 oversized sections a manual review had independently found) — see [`pickaxe/ROADMAP.md`](../ROADMAP.md) "Dogfood validation" section and root-repo memory `/memories/repo/instructions-bloat-backlog.md`. See [SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md](SESSIONS/260729-Reconciliation-Handoff-forQ3Features/SESSION.md) for the original v0.4.0 session.
 - [AI Training Manifest Contract](AI-TRAINING-MANIFEST.md) v0.1.0 is the canonical design for nearest-owner routing, active-context resolution, evidence isolation, and governed promotion.
 - Pickaxe is the sole Federation resolver, classifier, synchronizer, and promoter. ai-labs owns protocol and promotion targets; ai-labs-toolkit may consume output but does not duplicate traversal or classification.
 - The contract is design-only. `pickaxe context discover|route|resolve|check|promote` are not implemented yet.
@@ -43,6 +43,22 @@
 ------------------------------
 
 ## Shipped baseline
+
+## What shipped in v0.4.1/v0.4.2 (260729)
+
+- LB-03 fix: `deliver instruction-rollup` was silently dropping every extraction after
+the first when a whole-file finding overlapped section findings (mutation-order bug,
+read-after-truncate). Fixed via snapshot-before-mutate + `skipped_overlap` status.
+Caught via sandbox test, never touched a live file.
+- LB-04 fix: `.github/` sources were extracting to `.github/` directly, a location VS
+Code's Copilot instructions auto-discovery never scans (`.github/instructions/*.instructions.md`
+is the actual convention). Fixed via a `.github`-aware dest router + source-dir-relative
+pointer links. Found via code review before any live `--execute` run.
+- `test_pickaxe.py` — 123 tests total (4 new regression tests across both fixes), all green.
+- Dogfood-validated 260730 against the root monorepo's own `.github/copilot-instructions.md`
+via `diagnose instruction-bloat` (read-only, no `--execute`) — confirms detection is
+production-correct; a controlled `--execute` dry-run comparison is the next step before
+trusting a live rollup again on that file.
 
 ## What shipped in v0.4.0 (260729)
 

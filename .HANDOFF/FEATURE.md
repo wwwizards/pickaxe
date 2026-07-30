@@ -10,7 +10,9 @@
 #     initialization and splitting via the HOBOTS cascade model.
 # CREATED:  260612 BY: Claude(Sonnet4.6)::Copilot::SOLOMON
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - F-03 (A1-A4) shipped, 119 tests green
-# VERSION:  0.4.0  (mirrors the pickaxe CLI version; ../ROADMAP.md is
+# UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03 fix (instruction-rollup data loss), 121 tests green
+# UPDATED: 260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-04 fix (.github/instructions/ dest routing), 123 tests green
+# VERSION:  0.4.2  (mirrors the pickaxe CLI version; ../ROADMAP.md is
 #           canonical. All .HANDOFF docs bump together at every wrap.
 #           Live deliverable tracker: features-map.md + features-listing.md.)
 # STAGE:    ACTIVE
@@ -58,16 +60,16 @@ Pickaxe should make repo state observable, repairable, and auditable with one co
 
 See `../ROADMAP.md` § AS-IS and § TO-BE for full details.
 
-**Status (reconciled 2026-07-29):** v0.4.0 shipped — `discover` (incl. `commit-trends`, `drift`, `--submodules-only`), `diagnose` (incl. `instruction-bloat`), `deliver` (`instruction-rollup`, first-ever verb), `scan` (incl. `already_extracted`), `backup`, `restore` — 119 tests green. Extraction pipeline (Track A, `--execute` mode) remains **0% built** — no pipeline scaffolding exists yet; see ROADMAP.md Track A checklist.
+**Status (reconciled 2026-07-29):** v0.4.2 shipped — `discover` (incl. `commit-trends`, `drift`, `--submodules-only`), `diagnose` (incl. `instruction-bloat`), `deliver` (`instruction-rollup`, first-ever verb), `scan` (incl. `already_extracted`), `backup`, `restore` — 123 tests green. Extraction pipeline (Track A, `--execute` mode) remains **0% built** — no pipeline scaffolding exists yet; see ROADMAP.md Track A checklist.
 
-## F-03: Repo-hygiene diagnostics — instruction bloat + rollup (shipped 2026-07-29, v0.4.0)
+## F-03: Repo-hygiene diagnostics — instruction bloat + rollup (shipped 2026-07-29, v0.4.0; bugfix v0.4.1)
 
 **Shipped, no Federation dependency** (rescoped 2026-07-29 — see ROADMAP.md Track B and `features-map.md` for the full gap breakdown). Two new verbs (A1-A4):
 
 - `diagnose instruction-bloat` — noun-dispatch retrofit (A1) + apply the line-count/module-scatter triggers already documented in root `copilot-instructions.md` against `.github/*.instructions.md`, `AGENTS.md`, `SKILL.md`, `copilot-instructions.md` files (A3). 100% backward-compatible with the existing single-arg `diagnose <path>` invocation.
-- `deliver instruction-rollup` — the **first-ever `deliver` verb to ship** (A2); extracts a flagged block into a new scoped instruction file using the existing Instruction Inheritance Pattern frontmatter, dry-run by default, `--execute` to write, idempotent (A4).
+- `deliver instruction-rollup` — the **first-ever `deliver` verb to ship** (A2); extracts a flagged block into a new scoped instruction file using the existing Instruction Inheritance Pattern frontmatter, dry-run by default, `--execute` to write, idempotent (A4). **v0.4.1:** fixed LB-03 — a whole-file finding co-occurring with section findings on the same source caused every extraction after the first to silently write an empty, frontmatter-only file. Findings are now snapshotted per source file and overlapping section findings are reported `skipped_overlap` instead of double-extracted.
 
-19 new tests (`TestDiagnoseNounDispatch`, `TestDiagnoseInstructionBloat`, `TestDeliverInstructionRollup`), all green — 119/119 total.
+19 new tests (`TestDiagnoseNounDispatch`, `TestDiagnoseInstructionBloat`, `TestDeliverInstructionRollup`) + 2 LB-03 regression tests, all green — 121/121 total.
 
 See `features-listing.md` for the full checkbox/priority-tracked deliverable list and `features-map.md` for the visual overview — not duplicated here to avoid drift between multiple live-tracking docs.
 

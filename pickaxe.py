@@ -20,7 +20,8 @@
 # UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
 # UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat (A1/A3, noun-dispatch retrofit); deliver instruction-rollup (A2/A4, first-ever deliver verb)
 # UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-03: instruction-rollup snapshot-before-mutate + overlap skip (execute/plan_instruction_rollup)
-# VERSION: v0.4.1
+# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-04: .github/ sources extract to .github/instructions/ (VS Code auto-discovery); pointer links now source-dir-relative
+# VERSION: v0.4.2
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -467,9 +468,21 @@ def _slugify(text):
 
 
 def _rollup_dest_path(source_abs, finding):
+    """
+    Destination for an extracted finding. Sources that live directly in a
+    `.github/` directory route into `.github/instructions/` — the directory
+    VS Code's Copilot instructions-file auto-discovery actually scans for
+    `applyTo`-scoped files. A `.instructions.md` file dropped loose in
+    `.github/` (sibling to copilot-instructions.md) is not auto-discovered
+    and would silently orphan the extracted content. Other source locations
+    keep same-directory placement (not subject to that auto-discovery rule).
+    """
     heading = finding.get('heading')
     slug = _slugify(heading) if heading else f"rollup-{finding['start_line']}-{finding['end_line']}"
-    return os.path.join(os.path.dirname(source_abs), f'{slug}.instructions.md')
+    source_dir = os.path.dirname(source_abs)
+    if os.path.basename(source_dir) == '.github':
+        source_dir = os.path.join(source_dir, 'instructions')
+    return os.path.join(source_dir, f'{slug}.instructions.md')
 
 
 def plan_instruction_rollup(findings, root):
@@ -595,12 +608,17 @@ def execute_instruction_rollup(findings, root):
                 date=datetime.date.today().isoformat(),
             )
 
+            os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
             with open(dest_abs, 'w', encoding='utf-8') as f:
                 f.write(frontmatter)
                 f.writelines(extracted)
 
+            # Link relative to the SOURCE file's own directory, not the
+            # workspace root — dest_rel is root-relative and would double up
+            # the .github/ prefix when written as a link inside .github/copilot-instructions.md.
+            link_rel = os.path.relpath(dest_abs, os.path.dirname(source_abs)).replace(os.sep, '/')
             results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'extracted'})
-            applied.append((start, end, dest_rel))
+            applied.append((start, end, link_rel))
 
         if not applied:
             continue
@@ -609,8 +627,8 @@ def execute_instruction_rollup(findings, root):
         # never invalidated by an earlier write to a higher range.
         applied.sort(key=lambda t: t[0], reverse=True)
         new_lines = list(original_lines)
-        for start, end, dest_rel in applied:
-            pointer = f"> Extracted to [{os.path.basename(dest_rel)}]({dest_rel}) via `pickaxe deliver instruction-rollup`.\n"
+        for start, end, link_rel in applied:
+            pointer = f"> Extracted to [{os.path.basename(link_rel)}]({link_rel}) via `pickaxe deliver instruction-rollup`.\n"
             new_lines[start - 1:end] = [pointer]
 
         with open(source_abs, 'w', encoding='utf-8') as f:

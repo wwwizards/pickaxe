@@ -19,12 +19,14 @@
 # UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - backup/restore test sections (PX-B4)
 # UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - discover drift test section (PX-D1)
 # UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat + deliver instruction-rollup test sections (A1-A4)
-# VERSION: v0.4.0
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03 overlap tests; LB-04 .github/instructions/ dest + relative-link tests
+# VERSION: v0.4.1
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # --------------------------------------------------------------------------
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -1353,6 +1355,28 @@ class TestDeliverInstructionRollup:
         assert "Extracted to" in source_text
         assert "line5" not in source_text  # extracted body no longer in source
 
+    def test_execute_dest_lands_in_github_instructions_subfolder(self, tmp_path):
+        """LB-04: a .github/ source's extraction must land in
+        .github/instructions/ (VS Code's actual auto-discovery path), not
+        loose in .github/ where it would never be auto-loaded."""
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert results[0]["dest"].startswith(".github/instructions/")
+
+    def test_execute_pointer_link_resolves_relative_to_source_dir(self, tmp_path):
+        """LB-04: the markdown link written into the source must resolve
+        correctly from the source file's own directory, not from root."""
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        source_text = f.read_text()
+        m = re.search(r'\]\(([^)]+)\)', source_text)
+        assert m, "no markdown link found in source pointer"
+        link = m.group(1)
+        resolved = (f.parent / link).resolve()
+        assert resolved.is_file(), f"link '{link}' does not resolve to a real file from {f.parent}"
+
     def test_execute_idempotent_second_run_skips(self, tmp_path):
         _write_bloated_instructions(tmp_path)
         findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
@@ -1434,7 +1458,7 @@ class TestDeliverInstructionRollup:
         )
         assert result.returncode == 0, result.stderr
         assert "extracted" in result.stdout
-        dest_candidates = list((tmp_path / ".github").glob("big-section.instructions.md"))
+        dest_candidates = list((tmp_path / ".github" / "instructions").glob("big-section.instructions.md"))
         assert len(dest_candidates) == 1
 
     def test_cli_requires_from_report(self, tmp_path):

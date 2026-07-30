@@ -120,3 +120,35 @@ Claude Sonnet 5 (copilot)
 Caught via sandbox test before touching any live file (root repo's copilot-instructions.md was never at risk)
 
 ---
+
+## LB-04 — extraction dest for `.github/` sources didn't match VS Code's actual auto-discovery path
+
+**Date:** 2026-07-29
+**Version:** v0.4.1 → v0.4.2
+**Category:** design gap / dead-on-arrival output
+
+### What happened
+
+After fixing LB-03, a follow-up review of `deliver instruction-rollup`'s output asked the obvious next question: would VS Code actually load the extracted `.instructions.md` files? For a source living directly in `.github/` (e.g. `copilot-instructions.md`), `_rollup_dest_path` wrote the extraction to the same `.github/` directory, sibling to the source. VS Code's Copilot instructions auto-discovery only scans `.github/instructions/*.instructions.md` for `applyTo`-scoped files — a file dropped loose in `.github/` is never picked up. The rollup would report `extracted` with a clean pointer link, but the extracted content would be silently orphaned from the agent's context forever.
+
+### Root cause
+
+`_rollup_dest_path` always placed extractions in the same directory as the source file, with no awareness of VS Code's specific `.github/instructions/` auto-discovery convention. A second, related bug rode along: the pointer link written back into the source used `dest_rel` (root-relative), which double-counts the `.github/` prefix when the source itself already lives inside `.github/` — producing a markdown link that doesn't resolve from the source file's own directory.
+
+### Fix
+
+**Applied 2026-07-29 (v0.4.2).** `_rollup_dest_path` now special-cases sources whose immediate parent directory is named `.github`: the extraction routes to `.github/instructions/` instead of `.github/` directly (creating the subdirectory if needed). The pointer link written into the source is now computed relative to the source file's own directory (`os.path.relpath` from `os.path.dirname(source_abs)`), not root-relative, so it resolves correctly regardless of nesting depth. Covered by two new regression tests confirming the destination path and that the written link actually resolves to a real file from the source's directory.
+
+### Lesson
+
+**A tool that automates content extraction into a target ecosystem must model that ecosystem's actual discovery rules, not just "same directory as source."** Detection logic can be perfectly correct (LB-03's fix proved that) while the *delivery* location is still wrong in a way that makes the entire operation pointless. Always ask "will the consuming system actually find this file" as a distinct test from "did the extraction succeed without error."
+
+### LLM
+
+Claude Sonnet 5 (copilot)
+
+### Found by
+
+Code review following LB-03's fix, before any live `--execute` run against a real `.github/` file
+
+---
