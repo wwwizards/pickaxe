@@ -1361,6 +1361,51 @@ class TestDeliverInstructionRollup:
         second = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
         assert second[0]["status"] == "already_extracted"
 
+    def test_execute_overlapping_whole_file_and_section_findings(self, tmp_path):
+        """
+        LB-03 regression: a whole-file finding + section findings on the
+        same source (as diagnose_instruction_bloat legitimately produces
+        when a file is both globally bloated and has an oversized section)
+        must not silently drop the section content. The section is skipped
+        as redundant (already inside the whole-file dump) and the whole-file
+        extraction must retain every original line — not just the pointer
+        stub left behind by a prior finding's mutation.
+        """
+        f, total = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1, max_section_lines=3)
+        kinds = {finding["kind"] for finding in findings}
+        assert kinds == {"whole-file", "section"}
+
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        by_kind = {finding["kind"]: r for finding, r in zip(findings, results)}
+
+        assert by_kind["whole-file"]["status"] == "extracted"
+        assert by_kind["section"]["status"] == "skipped_overlap"
+
+        whole_file_dest = tmp_path / by_kind["whole-file"]["dest"]
+        extracted_text = whole_file_dest.read_text()
+        assert "line5" in extracted_text  # full original content, not a stub
+        assert extracted_text.count("\n") - 1 >= total  # frontmatter + full body
+
+        # Section's own destination must never have been created.
+        assert not (tmp_path / by_kind["section"]["dest"]).is_file()
+
+        # Source now holds exactly one pointer to the whole-file dump.
+        source_text = f.read_text()
+        assert source_text.count("Extracted to") == 1
+        assert "line5" not in source_text
+
+    def test_plan_marks_overlap_before_execute(self, tmp_path):
+        """Dry-run plan must report 'skipped_overlap' up front, matching
+        what execute_instruction_rollup will actually do — never claim
+        'planned' for a range execute silently skips."""
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1, max_section_lines=3)
+        plans = pickaxe.plan_instruction_rollup(findings, str(tmp_path))
+        statuses = {p["status"] for p in plans}
+        assert "skipped_overlap" in statuses
+        assert "planned" in statuses
+
     def test_cli_dry_run_default_leaves_files_untouched(self, tmp_path):
         f, _ = _write_bloated_instructions(tmp_path)
         findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)

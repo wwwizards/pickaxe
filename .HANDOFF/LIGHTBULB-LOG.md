@@ -105,7 +105,7 @@ Extractions are almost certainly applied sequentially against the file as it mut
 
 ### Fix
 
-Not yet applied — needs the actual extraction loop read. Likely fix: snapshot source file content once before applying any extraction in the plan, and/or skip/reorder overlapping ranges (a whole-file finding should not co-execute with section findings it fully contains) rather than trusting `diagnose`'s output as non-overlapping.
+**Applied 2026-07-29 (v0.4.1).** `execute_instruction_rollup` and `plan_instruction_rollup` now group findings by source file and read each source exactly once into a pristine snapshot — no re-read mid-loop. Any section finding fully contained within a whole-file finding's range is reported `skipped_overlap` (its text already lives in the whole-file dump) instead of being extracted a second time. Remaining ranges are written back to the source in a single pass, applied back-to-front by start line, so an earlier range's line numbers are never invalidated by an earlier write to a later range. `plan_instruction_rollup` mirrors the same `skipped_overlap` status so a dry run never claims `planned` for a range execute will actually skip. Covered by two new regression tests (`test_execute_overlapping_whole_file_and_section_findings`, `test_plan_marks_overlap_before_execute`) plus a live re-run against the same 1134-line file that originally triggered this bug — confirmed the whole-file extraction now retains every section's body text and the source ends up with exactly one pointer line.
 
 ### Lesson
 

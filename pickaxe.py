@@ -19,7 +19,8 @@
 # UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - backup/restore (PX-B4): bundle+working-tree snapshot; manifest.json; restore from bundle
 # UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
 # UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat (A1/A3, noun-dispatch retrofit); deliver instruction-rollup (A2/A4, first-ever deliver verb)
-# VERSION: v0.4.0
+# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-03: instruction-rollup snapshot-before-mutate + overlap skip (execute/plan_instruction_rollup)
+# VERSION: v0.4.1
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
 # AUTODOC: https://github.com/wwwizards/pickaxe  # yes, this file documents itself
@@ -475,23 +476,52 @@ def plan_instruction_rollup(findings, root):
     """
     Discover phase for deliver — compute the plan without touching disk.
     Returns list of {file, dest, start_line, end_line, heading, status}.
-    status: 'planned' | 'already_extracted'
+    status: 'planned' | 'already_extracted' | 'skipped_overlap'
+
+    'skipped_overlap' mirrors execute_instruction_rollup's LB-03 fix: a
+    section finding fully contained within a whole-file finding's range
+    for the same source is never extracted on its own (its text already
+    lives in the whole-file dump) — the plan must say so up front rather
+    than claim 'planned' for a range execute will silently skip.
     """
     root = os.path.abspath(root)
-    plans = []
+
+    by_file = {}
     for finding in findings:
-        source_abs = os.path.join(root, finding['file'])
-        dest_abs = _rollup_dest_path(source_abs, finding)
-        dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
-        status = 'already_extracted' if os.path.isfile(dest_abs) else 'planned'
-        plans.append({
-            'file': finding['file'],
-            'dest': dest_rel,
-            'start_line': finding['start_line'],
-            'end_line': finding['end_line'],
-            'heading': finding.get('heading'),
-            'status': status,
-        })
+        by_file.setdefault(finding['file'], []).append(finding)
+
+    plans = []
+    for file_rel, file_findings in by_file.items():
+        whole_file_ranges = [
+            (f['start_line'], f['end_line']) for f in file_findings if f['kind'] == 'whole-file'
+        ]
+
+        def _contained_in_whole_file(finding):
+            return any(
+                s <= finding['start_line'] and finding['end_line'] <= e
+                for s, e in whole_file_ranges
+            )
+
+        for finding in file_findings:
+            source_abs = os.path.join(root, finding['file'])
+            dest_abs = _rollup_dest_path(source_abs, finding)
+            dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+
+            if os.path.isfile(dest_abs):
+                status = 'already_extracted'
+            elif finding['kind'] != 'whole-file' and _contained_in_whole_file(finding):
+                status = 'skipped_overlap'
+            else:
+                status = 'planned'
+
+            plans.append({
+                'file': finding['file'],
+                'dest': dest_rel,
+                'start_line': finding['start_line'],
+                'end_line': finding['end_line'],
+                'heading': finding.get('heading'),
+                'status': status,
+            })
     return plans
 
 
@@ -503,45 +533,89 @@ def execute_instruction_rollup(findings, root):
     source. Idempotent: skips any finding whose destination file already
     exists (repo's own Idempotent Script Pattern rule).
 
+    LB-03 fix: findings are grouped by source file and read from a single
+    pristine snapshot, never re-read from disk mid-loop — a prior version
+    re-opened the source after each write, so every extraction after the
+    first read the already-mutated (pointer-stubbed) file and silently wrote
+    empty bodies. Any section finding fully contained within a whole-file
+    finding's range is skipped (its text already lives in the whole-file
+    dump); remaining ranges are replaced with pointers back-to-front against
+    the snapshot so earlier line numbers never shift under later writes.
+
     Returns list of {file, dest, status} where status is
-    'extracted' | 'already_extracted' | 'error: <msg>'.
+    'extracted' | 'already_extracted' | 'skipped_overlap' | 'error: <msg>'.
     """
     root = os.path.abspath(root)
     results = []
+
+    by_file = {}
     for finding in findings:
-        source_abs = os.path.join(root, finding['file'])
-        dest_abs = _rollup_dest_path(source_abs, finding)
-        dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+        by_file.setdefault(finding['file'], []).append(finding)
 
-        if os.path.isfile(dest_abs):
-            results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'already_extracted'})
-            continue
-
+    for file_rel, file_findings in by_file.items():
+        source_abs = os.path.join(root, file_rel)
         try:
             with open(source_abs, encoding='utf-8') as f:
-                lines = f.readlines()
+                original_lines = f.readlines()
         except Exception as exc:
-            results.append({'file': finding['file'], 'dest': dest_rel, 'status': f'error: {exc}'})
+            for finding in file_findings:
+                dest_abs = _rollup_dest_path(source_abs, finding)
+                dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+                results.append({'file': finding['file'], 'dest': dest_rel, 'status': f'error: {exc}'})
             continue
 
-        start, end = finding['start_line'], finding['end_line']
-        extracted = lines[start - 1:end]
-        heading = finding.get('heading') or os.path.splitext(os.path.basename(dest_abs))[0]
-        frontmatter = _ROLLUP_FRONTMATTER.format(
-            description=heading,
-            date=datetime.date.today().isoformat(),
-        )
+        whole_file_ranges = [
+            (f['start_line'], f['end_line']) for f in file_findings if f['kind'] == 'whole-file'
+        ]
 
-        with open(dest_abs, 'w', encoding='utf-8') as f:
-            f.write(frontmatter)
-            f.writelines(extracted)
+        def _contained_in_whole_file(finding):
+            return any(
+                s <= finding['start_line'] and finding['end_line'] <= e
+                for s, e in whole_file_ranges
+            )
 
-        pointer = f"> Extracted to [{os.path.basename(dest_rel)}]({dest_rel}) via `pickaxe deliver instruction-rollup`.\n"
-        new_lines = lines[:start - 1] + [pointer] + lines[end:]
+        applied = []  # (start, end, dest_rel) extracted from this snapshot
+        for finding in file_findings:
+            dest_abs = _rollup_dest_path(source_abs, finding)
+            dest_rel = os.path.relpath(dest_abs, root).replace(os.sep, '/')
+
+            if os.path.isfile(dest_abs):
+                results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'already_extracted'})
+                continue
+
+            if finding['kind'] != 'whole-file' and _contained_in_whole_file(finding):
+                results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'skipped_overlap'})
+                continue
+
+            start, end = finding['start_line'], finding['end_line']
+            extracted = original_lines[start - 1:end]
+            heading = finding.get('heading') or os.path.splitext(os.path.basename(dest_abs))[0]
+            frontmatter = _ROLLUP_FRONTMATTER.format(
+                description=heading,
+                date=datetime.date.today().isoformat(),
+            )
+
+            with open(dest_abs, 'w', encoding='utf-8') as f:
+                f.write(frontmatter)
+                f.writelines(extracted)
+
+            results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'extracted'})
+            applied.append((start, end, dest_rel))
+
+        if not applied:
+            continue
+
+        # Replace ranges back-to-front so a lower range's line numbers are
+        # never invalidated by an earlier write to a higher range.
+        applied.sort(key=lambda t: t[0], reverse=True)
+        new_lines = list(original_lines)
+        for start, end, dest_rel in applied:
+            pointer = f"> Extracted to [{os.path.basename(dest_rel)}]({dest_rel}) via `pickaxe deliver instruction-rollup`.\n"
+            new_lines[start - 1:end] = [pointer]
+
         with open(source_abs, 'w', encoding='utf-8') as f:
             f.writelines(new_lines)
 
-        results.append({'file': finding['file'], 'dest': dest_rel, 'status': 'extracted'})
     return results
 
 

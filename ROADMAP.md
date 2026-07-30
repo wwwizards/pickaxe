@@ -22,9 +22,9 @@
 
 ---
 
-## AS-IS — v0.4.0 (current, reconciled 2026-07-29)
+## AS-IS — v0.4.1 (current, reconciled 2026-07-29)
 
-pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D command surface (`discover`, `diagnose`, `deliver`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **119 passed**, 2026-07-29.
+pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D command surface (`discover`, `diagnose`, `deliver`, `scan`, `backup`, `restore`). It does not yet rewrite git history, create remotes, or push — extraction (Track A) remains 100% unbuilt. Ground-truthed this session against `pickaxe.py`'s actual `argparse` subcommands, `git log --oneline`, and a live run: `python -m pytest test_pickaxe.py -q` → **121 passed**, 2026-07-29 (v0.4.1 adds 2 regression tests for LB-03).
 
 **Shipped commands (verified against source + tests, not just docs):**
 
@@ -35,7 +35,7 @@ pickaxe is a **discovery, diagnostic, backup, and delivery** tool with a real 5D
 | `pickaxe discover drift [root]` | AHEAD/BEHIND/DIRTY/FLAGS table (`push-needed`\|`behind`\|`uncommitted`\|`no-remote`\|`fetch-failed`) | v0.3.6 |
 | `pickaxe diagnose [path]` | single-repo health: `missing_git`\|`missing_origin`\|`stripped_config`; gitlink/submodule-aware | v0.2.0; gitlink fix v0.3.2 (260603) |
 | `pickaxe diagnose instruction-bloat [root]` | noun-dispatch retrofit (A1) + whole-file/section line-threshold scan of instruction files (`--max-lines` 1000, `--max-section-lines` 50) (A3) | v0.4.0 (260729) |
-| `pickaxe deliver instruction-rollup <root> --from-report <findings.json> [--execute]` | first-ever `deliver` verb (A2); dry-run plan by default, extracts flagged blocks into new `.instructions.md` files with auto-filled frontmatter, idempotent (A4) | v0.4.0 (260729) |
+| `pickaxe deliver instruction-rollup <root> --from-report <findings.json> [--execute]` | first-ever `deliver` verb (A2); dry-run plan by default, extracts flagged blocks into new `.instructions.md` files with auto-filled frontmatter, idempotent (A4); overlapping whole-file+section findings now reported `skipped_overlap` (LB-03 fix) | v0.4.0 (260729); LB-03 fix v0.4.1 (260729) |
 | `pickaxe scan [root]` | tool-worthiness scorer (header metadata, commit count, 7-point scale); `already_extracted` annotation | v0.1.0 scorer; annotation v0.3.4 |
 | `pickaxe backup <root> --to <dest>` | snapshot all repos (bundles + working-tree) to a portable backup dir; `--skip-working-tree`, `--force` | v0.3.5 |
 | `pickaxe restore <backup> --to <dest>` | restore repos from a pickaxe backup manifest | v0.3.5 |
@@ -394,7 +394,8 @@ Foundational dependency: `.ai-labs.tools.yaml` `applyTo` paths must be absolute 
 | v0.3.4 | 260615 | Extraction annotation (Track B) | `scan` `already_extracted` field, `discover --submodules-only` |
 | v0.3.5 | — | Backup/restore (Track B) | `backup`, `restore` — full workspace snapshot + recovery |
 | v0.3.6 | — | Remote drift (Track B) | `discover drift` — ahead/behind/dirty/flags table |
-| v0.4.0 *(current)* | 260729 | Instruction hygiene (Track B) | `diagnose` noun-dispatch retrofit (A1); first-ever `deliver` verb (A2); `diagnose instruction-bloat` (A3); `deliver instruction-rollup` (A4) |
+| v0.4.0 | 260729 | Instruction hygiene (Track B) | `diagnose` noun-dispatch retrofit (A1); first-ever `deliver` verb (A2); `diagnose instruction-bloat` (A3); `deliver instruction-rollup` (A4) |
+| v0.4.1 *(current)* | 260729 | Bugfix (Track B) | Fixed LB-03: `deliver instruction-rollup` silently dropped every extraction after the first when a whole-file finding overlapped section findings. Snapshot-before-mutate + `skipped_overlap` status; caught via sandbox test before it ever touched a live file. |
 
 ### Planned (theme slots — not yet sequenced chronologically, see reconciliation note)
 
