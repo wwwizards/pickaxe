@@ -8,6 +8,7 @@
 # CREATED:  260612 BY: LogicWizards.NYC
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
 # UPDATED:  260730 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03/LB-04 fixes (data-loss + dest-routing), root-repo dogfood validation, 123 tests green
+# UPDATED:  260809 BY: ALICE::Copilot::ai-labs.SOLOMON - added `diagnose tasks-bloat` host-specific-adapter idea (TO-BE), companion to ai-labs-toolkit PROTOCOL.md
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
 # VERSION:  0.4.2  (mirrors the pickaxe CLI's shipped version — this file
@@ -237,6 +238,10 @@ A pre-built workflow that runs `pickaxe --format json --min-score 4` on PR and p
 ### Multi-repo index
 
 Build a persistent catalog (JSON/SQLite) across multiple scanned repos. Query: *"show me all scripts across all my repos with score ≥ 5 that haven't been extracted yet."*
+
+### `diagnose tasks-bloat` (host-specific adapter, idea 2026-08-09)
+
+Flag drift in VS Code `.vscode/tasks.json` the way `diagnose instruction-bloat` flags oversized instruction files: transient/scratch entries (created by `create_and_run_task` and never cleaned), duplicates, version-pinned one-offs (e.g. `Publish v0.7.8.87 Repository Chain`), and non-portable absolute-path commands. Because pickaxe is deliberately tool-agnostic and portable while `tasks.json` is a VS Code construct, this belongs as an opt-in **host-specific adapter**, not core. Companion context: the [ai-labs-toolkit PROTOCOL](../vsCode/ai-labs-toolkit/PROTOCOL.md) documents why the toolkit is the primary generator of scratch tasks, so the two tools pair naturally — the toolkit owns terminal transport, pickaxe owns the hygiene reporting.
 
 ---
 
