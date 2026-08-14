@@ -9,6 +9,7 @@
 # UPDATED:  260729 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - A1-A4 shipped (noun-dispatch, deliver verb, instruction-bloat, instruction-rollup), 119 tests green
 # UPDATED:  260730 BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03/LB-04 fixes (data-loss + dest-routing), root-repo dogfood validation, 123 tests green
 # UPDATED:  260809 BY: ALICE::Copilot::ai-labs.SOLOMON - added `diagnose tasks-bloat` host-specific-adapter idea (TO-BE), companion to ai-labs-toolkit PROTOCOL.md
+# UPDATED:  260814 BY: SOLOMON(Sonnet5)::Copilot::ai-labs.WIZ-00.fleet - flagged `pyst` as a concrete Track A cluster-extraction candidate (no code changed)
 # ARCHITECT: Joe Negron -- LogicWizards.NYC
 # TECHLEAD:  JN (Joe Negron -- LogicWizards.NYC)
 # VERSION:  0.4.2  (mirrors the pickaxe CLI's shipped version — this file
@@ -128,11 +129,39 @@ memory, root workspace) for full session notes.
 
 The core idea: when pickaxe finds a candidate, it should be able to complete the full workflow — from identifying the file or subdir in a monolith all the way to a new standalone repo on GitHub with its complete history intact.
 
-### Subdir-aware extraction
+### Subdir-aware extractions
 
 Today, `git-filter-repo --path 'file.py'` extracts a single file. The next step is to recognize when a set of files should travel together (e.g., a `parsers/` subdir, a role, a module package) and emit `--path-glob 'subdir/**'` instead.
 
 Pickaxe should detect candidate "clusters" — files in the same directory that share a parent history, similar authors, or a common `CREATED` date window — and suggest them as a unit.
+
+**Concrete near-term candidate (flagged 2026-08-14):** `pyst` (`SOLUTIONS/DevOps/SIDE-PROJECTS/ipscan/pyst.py` + its `test_pyst_*.py` companions) is an ART-pattern tool born inside `ipscan` that has outgrown it — targeted for feature/UX parity with `psst` first, then extraction via this very Track A pipeline (destination: own repo, or a sibling module inside the `psst` repo — undecided). A live example of exactly the cluster-detection problem this section describes, once Track A exists. Cross-referenced: root `.HANDOFF/STATE.md` (PINNED), `ipscan/README.md` Roadmap, `psst/ROADMAP.md`.
+
+### Submodule Aware Commits
+
+Following standard protocol — we start with the mandatory discovery: read STATE.md and run the SYNC-BEFORE-WRAP git checks (fetch, divergence, submodules, what's staged). With that, 
+
+1. in order to discover the current state of any monorepo, we must first check for submodules & branch divergence with something like this: 
+
+`
+cd C:\PROJECTS\LogicWizards; Write-Host '=== SUBMODULES ==='; git submodule status; Write-Host '=== CURRENT BRANCH + DIVERGENCE ==='; git branch --show-current; git fetch origin --prune 2>&1 | Out-String; git rev-list --left-right --count HEAD...origin/master 2>&1 | Out-String; Write-Host '=== STAGED (name-status) ==='; git --no-pager diff --cached --name-status; Write-Host '=== UNSTAGED / UNTRACKED (short) ==='; git status --short
+`
+
+2. then we need to check previous commits to comply with our `SYNC-BEFORE-WRAP` gate to 
+
+`
+Write-Host '=== LAST 8 RELEASE COMMITS ==='; git --no-pager log --oneline -8; Write-Host '=== HIGHEST v0.7.8.x IN HISTORY ==='; git --no-pager log --all --oneline | Select-String 'v0\.7\.8\.\d+' | Select-Object -First 5; Write-Host '=== HIGHEST COMMIT-MSG FILE ==='; Get-ChildItem COMMIT-MSG-v0.7.8.*.txt | ForEach-Object { if ($_.Name -match 'v0\.7\.8\.(\d+)') {[pscustomobject]@{N=[int]$Matches[1];Name=$_.Name}} } | Sort-Object N -Desc | Select-Object -First 3; Write-Host '=== SUBMODULE DIRTY DETAIL (pickaxe) ==='; git -C SOLUTIONS/DevOps/SIDE-PROJECTS/pickaxe status --short; Write-Host '=== SUBMODULE DIRTY DETAIL (ai-labs-toolkit) ==='; git -C SOLUTIONS/DevOps/SIDE-PROJECTS/vsCode/ai-labs-toolkit status --short
+`
+> :important: NOTE: the above examples use the LogicWizards directory but can  represent any workspace-root-dir in vscode. 
+
+Per the `SUBMODULES ARE NOT THE MONOREPO` gate, submodule pointer bumps must never ride along in an unrelated subdir wrap — each submodule commits to its own remote first, then its parent pointer is bumped in a dedicated commit. Those two submodules have live in-progress work that their own agents/sessions need to wrap separately.
+
+3. once that is complete we check that there are no extraneous line wraps in md files and check that the meta-h
+eaders are in order for fsDB/fsQL compiance
+
+` Write-Host '=== HEADER CHECK ==='; python 'SOLUTIONS\DevOps\SIDE-PROJECTS\ai-labs\experiments\autodocs\check-headers.py' '.HANDOFF\STATE.md' 'SOLUTIONS\CloudOps\Intune-Deployments\.HANDOFF\STATE.md'; Write-Host '=== STAGE WRAP DOCS ==='; git add 'COMMIT-MSG-v0.7.8.100.txt' '.HANDOFF/STATE.md' 'SOLUTIONS/CloudOps/Intune-Deployments/.HANDOFF/STATE.md'; Write-Host '=== FINAL STAGED SET ==='; git --no-pager diff --cached --stat; Write-Host '=== NOT STAGED (should be dirt only) ==='; git status --short | Select-String -NotMatch 'Intune-Deployments'`
+
+we need to do similar things on every commit dso iwould loove to make this ceremony more generic and have pickaxe do those things instead of agents - to minimize token spend...
 
 ### `.pickaxe/` — chain of custody
 
