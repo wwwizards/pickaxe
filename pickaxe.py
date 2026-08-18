@@ -11,16 +11,16 @@
 #     Inspired by years of hoarding useful scripts in the wrong repos.
 #     "You don't lose your tools — you just forget where you put them."
 #
-# CREATED: 26-0506 - BY: wwwizards <github.com/wwwizards>
-# UPDATED: 26-0527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
-# UPDATED: 26-0603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
-# UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - commit_trends (discover commit-trends; --by week|day|month; --from/--to; --marathon-threshold; --holidays)
-# UPDATED: 26-0614 - BY: wwwizards <github.com/wwwizards> - scan: already-extracted annotation (PX-B3); discover --submodules-only (PX-B1)
-# UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - backup/restore (PX-B4): bundle+working-tree snapshot; manifest.json; restore from bundle
-# UPDATED: 26-0721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
-# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat (A1/A3, noun-dispatch retrofit); deliver instruction-rollup (A2/A4, first-ever deliver verb)
-# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-03: instruction-rollup snapshot-before-mutate + overlap skip (execute/plan_instruction_rollup)
-# UPDATED: 26-0729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-04: .github/ sources extract to .github/instructions/ (VS Code auto-discovery); pointer links now source-dir-relative
+# CREATED: 260506 - BY: wwwizards <github.com/wwwizards>
+# UPDATED: 260527 - BY: wwwizards <github.com/wwwizards> - --save on scan; _build_scan_summary; session trajectory support
+# UPDATED: 260603 - BY: wwwizards <github.com/wwwizards> - gitlink submodule support (_resolve_git_dir; find_git_root; diagnose; discover)
+# UPDATED: 260614 - BY: wwwizards <github.com/wwwizards> - commit_trends (discover commit-trends; --by week|day|month; --from/--to; --marathon-threshold; --holidays)
+# UPDATED: 260614 - BY: wwwizards <github.com/wwwizards> - scan: already-extracted annotation (PX-B3); discover --submodules-only (PX-B1)
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - backup/restore (PX-B4): bundle+working-tree snapshot; manifest.json; restore from bundle
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - discover drift (PX-D1): fetch + ahead/behind/dirty per repo; _render_drift_table
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat (A1/A3, noun-dispatch retrofit); deliver instruction-rollup (A2/A4, first-ever deliver verb)
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-03: instruction-rollup snapshot-before-mutate + overlap skip (execute/plan_instruction_rollup)
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - fix LB-04: .github/ sources extract to .github/instructions/ (VS Code auto-discovery); pointer links now source-dir-relative
 # VERSION: v0.4.2
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # COPYRIGHT: (c) 2026 wwwizards <github.com/wwwizards>
@@ -467,6 +467,26 @@ def _slugify(text):
     return slug or 'rollup'
 
 
+def _pickaxe_version():
+    """Version comes from this file's own header (no __version__ constant by convention)."""
+    return parse_header(__file__).get('version') or 'unknown'
+
+
+def _rollup_provenance_comment(source_abs, dest_abs):
+    """
+    MVx (2026-07-30): compact grep-able provenance line, substituted for a
+    full fenced NOTES header block on rollup-generated files only. Sits
+    after the YAML frontmatter's closing '---' (not before it) because
+    frontmatter parsers require '---' to be the file's literal first line.
+    Not yet a repo-wide header-convention change — experimental, scoped to
+    `deliver instruction-rollup` output pending further validation.
+    """
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+    version = _pickaxe_version()
+    source_rel = os.path.relpath(source_abs, os.path.dirname(dest_abs)).replace(os.sep, '/')
+    return f"<!-- {ts}::Pickaxe(deliver instruction-rollup-v{version})::[EXTRACTED-FROM]({source_rel}) -->\n\n"
+
+
 def _rollup_dest_path(source_abs, finding):
     """
     Destination for an extracted finding. Sources that live directly in a
@@ -611,6 +631,7 @@ def execute_instruction_rollup(findings, root):
             os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
             with open(dest_abs, 'w', encoding='utf-8') as f:
                 f.write(frontmatter)
+                f.write(_rollup_provenance_comment(source_abs, dest_abs))
                 f.writelines(extracted)
 
             # Link relative to the SOURCE file's own directory, not the

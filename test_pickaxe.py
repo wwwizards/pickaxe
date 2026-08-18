@@ -12,6 +12,7 @@
 #     Section 7 - Diagnose instruction-bloat / Deliver instruction-rollup: v0.4.0 (A1-A4)
 #
 #     Run all:              pytest test_pickaxe.py -v
+#     Run all (recommended): python ../ipscan/pyst.py   (avoids full-suite CPU/system-freeze risk; ~79s)
 #     Smoke only:           pytest test_pickaxe.py -v -k Smoke
 #     Drift only:           pytest test_pickaxe.py -v -k Drift
 #
@@ -29,6 +30,7 @@ import os
 import re
 import subprocess
 import sys
+import datetime
 
 import pytest
 
@@ -1376,6 +1378,24 @@ class TestDeliverInstructionRollup:
         link = m.group(1)
         resolved = (f.parent / link).resolve()
         assert resolved.is_file(), f"link '{link}' does not resolve to a real file from {f.parent}"
+
+    def test_execute_dest_has_grepable_provenance_comment(self, tmp_path):
+        """MVx (2026-07-30): compact provenance line after frontmatter, in
+        place of a full fenced NOTES block, points back to the source and
+        is greppable via 'Pickaxe(deliver instruction-rollup'."""
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        dest_abs = tmp_path / results[0]["dest"]
+        text = dest_abs.read_text()
+        assert text.startswith("---\n"), "frontmatter must stay on line 1 for applyTo parsing"
+        m = re.search(r'<!-- (.+?)::Pickaxe\(deliver instruction-rollup-v(.+?)\)::\[EXTRACTED-FROM\]\((.+?)\) -->', text)
+        assert m, "provenance comment not found or malformed"
+        ts, version, source_link = m.groups()
+        datetime.datetime.fromisoformat(ts)  # raises if not a real ISO timestamp
+        assert version != "unknown"
+        resolved = (dest_abs.parent / source_link).resolve()
+        assert resolved.is_file(), f"provenance link '{source_link}' does not resolve back to the source"
 
     def test_execute_idempotent_second_run_skips(self, tmp_path):
         _write_bloated_instructions(tmp_path)
