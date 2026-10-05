@@ -97,13 +97,13 @@ CPU, RAM, GPU utilization, temperature, and frequency across all probes.
 The visual companion to `sys-probe.py`. Regenerate after any new probe.
 
 ```powershell
-# Default paths (probes.json + mvsx-stories chart)
+# Default paths (probes.json + mvx-stories chart)
 .venv\Scripts\python.exe sys-tools\probes-chart.py
 
 # Explicit paths
 .venv\Scripts\python.exe sys-tools\probes-chart.py `
   --input .AI-TRAINING\probes.json `
-  --output .AI-TRAINING\mvsx-stories\my-chart.png
+  --output .AI-TRAINING\mvx-stories\my-chart.png
 
 # Custom title
 .venv\Scripts\python.exe sys-tools\probes-chart.py --title "My GPU R&D Session"
@@ -191,7 +191,7 @@ before and after a change, then compare:
   -c "timestamp,label,gpu0_util_pct,gpu0_pstate,gpu0_temp_c,cpu_util_pct"
 ```
 
-See `.AI-TRAINING/mvsx-stories/260601-GPU-Utilization-Optimization.md` for a
+See `.AI-TRAINING/mvx-stories/260601-GPU-Utilization-Optimization.md` for a
 live example with NVIDIA Quadro P520 baseline data.
 
 ---

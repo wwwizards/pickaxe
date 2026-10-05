@@ -1,25 +1,36 @@
 #!/usr/bin/env python3
 # --------------------------------------------------------------------------
-# Script: test_pickaxe.py
+# SCRIPT: test_pickaxe.py
 # --------------------------------------------------------------------------
 # ABSTRACT: Test suite for pickaxe.py.
-#     Section 1 — Smoke: v0.1.1 baseline. Must pass before any changes.
-#     Section 2 — Diagnose: v0.2 health checks. Failing until implemented.
-#     Section 3 — Discover: v0.2 repo map. Failing until implemented.
+#     Section 1 - Smoke:        v0.1.1 baseline (scan, score, header parsing)
+#     Section 2 - Diagnose:     v0.2 single-repo health checks
+#     Section 3 - Discover:     v0.2 repo map + commit-trends
+#     Section 4 - Backup:       v0.3.5 bundle + working-tree snapshot
+#     Section 5 - Restore:      v0.3.5 restore from manifest
+#     Section 6 - Drift:        v0.3.6 fetch + ahead/behind/dirty per repo
+#     Section 7 - Diagnose instruction-bloat / Deliver instruction-rollup: v0.4.0 (A1-A4)
 #
-#     Run all:          pytest test_pickaxe.py -v
-#     Smoke only:       pytest test_pickaxe.py -v -k Smoke
-#     Failing (v0.2):   pytest test_pickaxe.py -v -k "Diagnose or Discover"
+#     Run all:              pytest test_pickaxe.py -v
+#     Run all (recommended): python ../ipscan/pyst.py   (avoids full-suite CPU/system-freeze risk; ~79s)
+#     Smoke only:           pytest test_pickaxe.py -v -k Smoke
+#     Drift only:           pytest test_pickaxe.py -v -k Drift
 #
 # CREATED: 26-0526 - BY: wwwizards <github.com/wwwizards>
-# VERSION: v0.1.0
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - backup/restore test sections (PX-B4)
+# UPDATED: 260721 - BY: wwwizards <github.com/wwwizards> - discover drift test section (PX-D1)
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - diagnose instruction-bloat + deliver instruction-rollup test sections (A1-A4)
+# UPDATED: 260729 - BY: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON - LB-03 overlap tests; LB-04 .github/instructions/ dest + relative-link tests
+# VERSION: v0.4.1
 # LICENSE: MIT - https://opensource.org/licenses/MIT
 # --------------------------------------------------------------------------
 
 import json
 import os
+import re
 import subprocess
 import sys
+import datetime
 
 import pytest
 
@@ -192,6 +203,41 @@ class TestSmoke:
             capture_output=True, text=True,
         )
         assert result.returncode == 0
+
+    # --- PX-B3: already_extracted annotation ---
+
+    def test_scan_candidate_has_already_extracted_key(self, tmp_path):
+        """Every scan candidate dict must include 'already_extracted' key."""
+        # Script inside a fresh isolated repo — not already extracted
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        subprocess.run(['git', 'init', str(repo)], capture_output=True)
+        script = repo / "tool.py"
+        script.write_text("#!/usr/bin/env python3\n# VERSION: 1.0.0\n# PURPOSE: test\n# LICENSE: MIT\n# CREATED: 2026-01-01\npass\n")
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'init',
+                        '-c', 'user.email=t@t.com', '-c', 'user.name=T',
+                        '-c', 'commit.gpgsign=false'], capture_output=True)
+        candidates = pickaxe.scan(str(tmp_path), ['.py'], min_score=0)
+        assert len(candidates) >= 1
+        for c in candidates:
+            assert 'already_extracted' in c
+
+    def test_scan_same_repo_not_annotated_as_extracted(self, tmp_path):
+        """A file inside the scan root's own repo must have already_extracted=None."""
+        repo = tmp_path / "myrepo"
+        repo.mkdir()
+        subprocess.run(['git', 'init', str(repo)], capture_output=True)
+        script = repo / "tool.py"
+        script.write_text("#!/usr/bin/env python3\n# VERSION: 1.0.0\n# PURPOSE: test\n# LICENSE: MIT\n# CREATED: 2026-01-01\npass\n")
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-m', 'init',
+                        '-c', 'user.email=t@t.com', '-c', 'user.name=T',
+                        '-c', 'commit.gpgsign=false'], capture_output=True)
+        # Scan from within the repo — same git root, not extracted
+        candidates = pickaxe.scan(str(repo), ['.py'], min_score=0)
+        for c in candidates:
+            assert c['already_extracted'] is None
 
 
 # --------------------------------------------------------------------------
@@ -368,6 +414,35 @@ class TestDiscover:
         sub_entry = next(r for r in results if r["rel"] == "my-sub")
         assert sub_entry["health_ok"] is True
 
+    # --- PX-B1: --submodules-only ---
+
+    def test_cli_discover_submodules_only_returns_only_submodules(self, tmp_path):
+        """--submodules-only must exclude normal repos, keep only gitlink entries."""
+        _make_repo(tmp_path, "normal-repo", "https://github.com/test/normal.git")
+        _make_submodule_repo(tmp_path, "sub-repo", "https://github.com/test/sub.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path), "--submodules-only", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        rels = [e["rel"] for e in data]
+        assert "sub-repo" in rels
+        assert "normal-repo" not in rels
+
+    def test_cli_discover_submodules_only_empty_when_no_submodules(self, tmp_path):
+        """--submodules-only on a tree with no gitlinks must return empty list."""
+        _make_repo(tmp_path, "plain", "https://github.com/test/plain.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path), "--submodules-only", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data == []
+
 
 # --------------------------------------------------------------------------
 # SESSION LOGGING — v0.3.0  (--save flag)
@@ -500,4 +575,924 @@ class TestSessionLogging:
         event = json.loads(open(files[0], encoding="utf-8").readline())
         assert event["phase"] == "scan"
         assert event["result"]["candidates_found"] == 0  # empty dir → 0 candidates
+
+
+# --------------------------------------------------------------------------
+# COMMIT TRENDS — discover commit-trends  (v0.3.3)
+# --------------------------------------------------------------------------
+
+def _make_git_repo_with_commits(tmp_path, name, commit_dates):
+    """
+    CREATE:  a real git repo at tmp_path/name with one empty commit per date.
+    commit_dates: list of ISO date strings ('YYYY-MM-DD').
+    Returns the repo path as a str.
+
+    UPDATE: .git/config directly to avoid inheriting global git settings
+    (gpgsign, safe.directory, etc.) that would cause commits to fail in
+    tmp dirs on machines with strict git configs.
+    """
+    repo = tmp_path / name
+    repo.mkdir()
+
+    # Init repo
+    subprocess.check_call(["git", "init", "-b", "main", str(repo)],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Write config directly — bypasses global gpgsign, safe.directory, etc.
+    git_config = (
+        "[core]\n"
+        "\trepositoryformatversion = 0\n"
+        "\tfilemode = false\n"
+        "\tbare = false\n"
+        "[user]\n"
+        "\temail = t@t.com\n"
+        "\tname = Test\n"
+        "[commit]\n"
+        "\tgpgsign = false\n"
+    )
+    (repo / ".git" / "config").write_text(git_config, encoding="utf-8")
+
+    # Use ISO 8601 datetime format (git accepts bare YYYY-MM-DD but some builds don't)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "t@t.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "t@t.com",
+        "GIT_CONFIG_NOSYSTEM": "1",    # skip /etc/gitconfig
+        "HOME": str(tmp_path),         # skip ~/.gitconfig on this machine
+    }
+
+    for i, date in enumerate(commit_dates):
+        iso_date = f"{date}T12:00:00 +0000"
+        date_env = {**env, "GIT_AUTHOR_DATE": iso_date, "GIT_COMMITTER_DATE": iso_date}
+        (repo / f"file{i}.txt").write_text(f"commit {i}\n")
+        subprocess.check_call(["git", "-C", str(repo), "add", "."],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(
+            ["git", "-C", str(repo),
+             "-c", "commit.gpgsign=false",
+             "commit", "--allow-empty", "-m", f"commit {i}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=date_env,
+        )
+    return str(repo)
+
+
+class TestCommitTrends:
+
+    def test_commit_trends_function_exists(self):
+        assert hasattr(pickaxe, "commit_trends"), "pickaxe.commit_trends() not implemented"
+
+    def test_commit_trends_returns_list(self, tmp_path):
+        repo = _make_git_repo_with_commits(tmp_path, "r1", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="week")
+        assert isinstance(result, list)
+
+    def test_commit_trends_entries_have_required_keys(self, tmp_path):
+        repo = _make_git_repo_with_commits(tmp_path, "r2", ["2026-01-05"])
+        result = pickaxe.commit_trends(repo, by="week")
+        assert len(result) >= 1
+        for entry in result:
+            assert "period" in entry
+            assert "count" in entry
+
+    def test_commit_trends_week_format(self, tmp_path):
+        """Periods must be ISO week strings like '2026-W02'."""
+        repo = _make_git_repo_with_commits(tmp_path, "r3", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="week")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-W\d{2}$", entry["period"]), \
+                f"unexpected period format: {entry['period']}"
+
+    def test_commit_trends_day_format(self, tmp_path):
+        """by='day' must produce YYYY-MM-DD periods."""
+        repo = _make_git_repo_with_commits(tmp_path, "r4", ["2026-01-05", "2026-01-06"])
+        result = pickaxe.commit_trends(repo, by="day")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-\d{2}-\d{2}$", entry["period"]), \
+                f"unexpected day format: {entry['period']}"
+
+    def test_commit_trends_month_format(self, tmp_path):
+        """by='month' must produce YYYY-MM periods."""
+        repo = _make_git_repo_with_commits(tmp_path, "r5", ["2026-01-05", "2026-02-10"])
+        result = pickaxe.commit_trends(repo, by="month")
+        import re
+        for entry in result:
+            assert re.match(r"\d{4}-\d{2}$", entry["period"]), \
+                f"unexpected month format: {entry['period']}"
+
+    def test_commit_trends_counts_correctly(self, tmp_path):
+        """3 commits in the same week → count=3 for that week."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r6",
+            ["2026-01-05", "2026-01-06", "2026-01-07"],  # all in 2026-W02
+        )
+        result = pickaxe.commit_trends(repo, by="week")
+        week = next((r for r in result if r["period"] == "2026-W02"), None)
+        assert week is not None, f"2026-W02 not found in {result}"
+        assert week["count"] == 3
+
+    def test_commit_trends_empty_repo_returns_empty(self, tmp_path):
+        """A repo with no commits must return []."""
+        repo = tmp_path / "empty-repo"
+        repo.mkdir()
+        subprocess.check_call(["git", "init", str(repo)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = pickaxe.commit_trends(str(repo), by="week")
+        assert result == []
+
+    def test_commit_trends_non_repo_returns_empty(self, tmp_path):
+        """A plain directory (no .git) must return []."""
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        result = pickaxe.commit_trends(str(plain), by="week")
+        assert result == []
+
+    def test_commit_trends_sorted_chronologically(self, tmp_path):
+        """Periods must be in ascending order."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r7",
+            ["2026-01-05", "2026-03-02", "2026-02-09"],  # out of order input
+        )
+        result = pickaxe.commit_trends(repo, by="week")
+        periods = [r["period"] for r in result]
+        assert periods == sorted(periods)
+
+    def test_commit_trends_from_date_filter(self, tmp_path):
+        """--from should exclude commits before the given date."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r8",
+            ["2026-01-05", "2026-03-02"],
+        )
+        result = pickaxe.commit_trends(repo, by="month", from_date="2026-02-01")
+        # Only the March commit should appear
+        months = [r["period"] for r in result]
+        assert "2026-01" not in months
+        assert "2026-03" in months
+
+    def test_commit_trends_to_date_filter(self, tmp_path):
+        """--to should exclude commits after the given date."""
+        repo = _make_git_repo_with_commits(
+            tmp_path, "r9",
+            ["2026-01-05", "2026-03-02"],
+        )
+        result = pickaxe.commit_trends(repo, by="month", to_date="2026-02-01")
+        months = [r["period"] for r in result]
+        assert "2026-03" not in months
+        assert "2026-01" in months
+
+    def test_commit_trends_on_live_pickaxe_repo(self):
+        """Smoke: running against pickaxe's own repo must return non-empty list."""
+        result = pickaxe.commit_trends(HERE, by="week")
+        assert len(result) > 0, "Expected at least one week of commits in pickaxe repo"
+        assert all("count" in r and r["count"] > 0 for r in result)
+
+    def test_render_trends_table_function_exists(self):
+        assert hasattr(pickaxe, "render_trends_table")
+
+    def test_render_trends_table_outputs_header(self, tmp_path, capsys):
+        """render_trends_table must print PERIOD and COUNT headers."""
+        trends = [{"period": "2026-W01", "count": 3}, {"period": "2026-W02", "count": 1}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "PERIOD" in out
+        assert "COUNT" in out
+
+    def test_render_trends_table_flags_marathon(self, tmp_path, capsys):
+        """A period with count > threshold must show MARATHON in output."""
+        trends = [{"period": "2026-W24", "count": 5}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "MARATHON" in out
+
+    def test_render_trends_table_no_false_marathon(self, tmp_path, capsys):
+        """A period at exactly the threshold must NOT be flagged as marathon."""
+        trends = [{"period": "2026-W24", "count": 2}]
+        pickaxe.render_trends_table(trends, by="week", marathon_threshold=2)
+        out = capsys.readouterr().out
+        assert "MARATHON" not in out
+
+    def test_cli_discover_commit_trends_exits_zero(self, tmp_path):
+        """CLI: pickaxe discover commit-trends --repo <live-repo> must exit 0."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+
+    def test_cli_discover_commit_trends_json(self, tmp_path):
+        """CLI: --format json must emit valid JSON list."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE, "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "period" in data[0]
+        assert "count" in data[0]
+
+    def test_cli_discover_commit_trends_by_month(self, tmp_path):
+        """CLI: --by month must produce month-format periods in JSON output."""
+        import re
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "commit-trends", "--repo", HERE,
+             "--format", "json", "--by", "month"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        data = json.loads(result.stdout)
+        for entry in data:
+            assert re.match(r"\d{4}-\d{2}$", entry["period"]), \
+                f"unexpected month format: {entry['period']}"
+
+    def test_cli_discover_default_still_works(self, tmp_path):
+        """Backward compat: pickaxe discover <path> (no noun) must still work."""
+        _make_repo(tmp_path, "compat-repo", "https://github.com/test/compat.git")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"non-zero exit: {result.stderr}"
+        assert "compat-repo" in result.stdout
+
+
+# --------------------------------------------------------------------------
+# BACKUP / RESTORE — v0.3.5
+# --------------------------------------------------------------------------
+
+def _make_real_repo(parent, name, origin_url=None):
+    """
+    Create a real git repo with one commit under parent/name.
+    Required for bundle tests (git bundle needs at least one commit).
+    """
+    repo = parent / name
+    repo.mkdir()
+    for cmd in [
+        ["git", "-C", str(repo), "init", "-b", "main"],
+        ["git", "-C", str(repo), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(repo), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    (repo / "README.md").write_text("# test\n")
+    subprocess.run(["git", "-C", str(repo), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"],
+                   capture_output=True, check=True)
+    if origin_url:
+        subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", origin_url],
+                       capture_output=True, check=True)
+    return repo
+
+
+class TestBackupSmoke:
+    """pickaxe.backup_workspace — manifest, bundles, working-tree."""
+
+    def test_backup_creates_manifest(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "manifest.json").is_file()
+
+    def test_manifest_required_keys(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        for key in ("pickaxe_version", "created", "root", "repos"):
+            assert key in m, f"manifest missing key: {key}"
+
+    def test_backup_creates_bundles_dir(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "bundles").is_dir()
+
+    def test_backup_bundles_each_repo(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        _make_real_repo(root, "repo-b")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        ok = [r for r in m["repos"] if r["bundle_ok"]]
+        assert len(ok) == 2
+
+    def test_backup_working_tree_copied(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        (root / "uncommitted.txt").write_text("unsaved work\n")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        assert (dest / "working-tree").is_dir()
+        assert (dest / "working-tree" / "uncommitted.txt").is_file()
+
+    def test_backup_working_tree_excludes_git_dirs(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest))
+        for dirpath, dirnames, _ in os.walk(str(dest / "working-tree")):
+            assert ".git" not in dirnames, f".git leaked into working-tree at {dirpath}"
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+
+    def test_backup_skip_working_tree_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(dest), skip_working_tree=True)
+        assert not (dest / "working-tree").exists()
+        assert "working_tree" not in pickaxe.json.loads(
+            (dest / "manifest.json").read_text()
+        )
+
+    def test_manifest_repo_entry_shape(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a", origin_url="https://github.com/test/a.git")
+        dest = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(dest))
+        repo = m["repos"][0]
+        for key in ("rel", "path", "bundle", "bundle_ok", "remote", "branch", "flags"):
+            assert key in repo, f"repo entry missing key: {key}"
+
+    def test_cli_backup_creates_manifest(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak-cli"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "backup", str(root), "--to", str(dest)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert (dest / "manifest.json").is_file()
+
+    def test_cli_backup_json_format(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        dest = tmp_path / "bak-json"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "backup", str(root), "--to", str(dest), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert "repos" in data
+
+
+class TestRestoreSmoke:
+    """pickaxe.restore_workspace — reads manifest, clones bundles, re-adds remotes."""
+
+    def test_restore_missing_manifest_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            pickaxe.restore_workspace(
+                str(tmp_path / "nonexistent"), str(tmp_path / "dest")
+            )
+
+    def test_restore_clones_repos(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        results = pickaxe.restore_workspace(str(bak), str(dest))
+        ok = [r for r in results if r["status"] == "ok"]
+        assert len(ok) >= 1
+
+    def test_restore_result_entry_shape(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+        results = pickaxe.restore_workspace(str(bak), str(tmp_path / "dest"))
+        for r in results:
+            assert "rel" in r and "status" in r
+
+    def test_restore_skips_already_existing(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        pickaxe.restore_workspace(str(bak), str(dest))
+        results2 = pickaxe.restore_workspace(str(bak), str(dest))
+        already = [r for r in results2 if r["status"] == "already_exists"]
+        assert len(already) >= 1
+
+    def test_restore_missing_bundle_reported(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        m = pickaxe.backup_workspace(str(root), str(bak))
+        # Delete a bundle to simulate partial backup
+        (bak / m["repos"][0]["bundle"]).unlink()
+
+        results = pickaxe.restore_workspace(str(bak), str(tmp_path / "dest"))
+        missing = [r for r in results if r["status"] == "missing_bundle"]
+        assert len(missing) >= 1
+
+    def test_restore_remote_reattached(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a", origin_url="https://github.com/test/a.git")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored"
+        results = pickaxe.restore_workspace(str(bak), str(dest))
+        ok = [r for r in results if r["status"] == "ok"]
+        assert len(ok) >= 1
+        # Verify origin was re-added
+        restored_path = dest / "repo-a"
+        if restored_path.exists():
+            r = subprocess.run(
+                ["git", "-C", str(restored_path), "remote", "get-url", "origin"],
+                capture_output=True, text=True,
+            )
+            assert "github.com/test/a.git" in r.stdout
+
+    def test_cli_restore(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        bak = tmp_path / "bak"
+        pickaxe.backup_workspace(str(root), str(bak))
+
+        dest = tmp_path / "restored-cli"
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "restore", str(bak), "--to", str(dest)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+
+# --------------------------------------------------------------------------
+# Section 6 — Drift (v0.3.6)
+# --------------------------------------------------------------------------
+
+def _make_clone_pair(parent, name):
+    """
+    Create an upstream repo (one commit) and a clone of it.
+    Returns (upstream_path, clone_path). The clone has origin pointing to upstream.
+    """
+    upstream = parent / f"{name}-upstream"
+    upstream.mkdir()
+    for cmd in [
+        ["git", "-C", str(upstream), "init", "-b", "main"],
+        ["git", "-C", str(upstream), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(upstream), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    (upstream / "README.md").write_text("# upstream\n")
+    subprocess.run(["git", "-C", str(upstream), "add", "."], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(upstream), "commit", "-m", "init"],
+                   capture_output=True, check=True)
+    clone = parent / name
+    subprocess.run(["git", "clone", str(upstream), str(clone)],
+                   capture_output=True, check=True)
+    for cmd in [
+        ["git", "-C", str(clone), "config", "user.email", "test@pickaxe.test"],
+        ["git", "-C", str(clone), "config", "user.name", "Pickaxe Test"],
+    ]:
+        subprocess.run(cmd, capture_output=True, check=True)
+    return upstream, clone
+
+
+class TestDiscoverDrift:
+    """pickaxe.discover_remote_drift -- fetch + ahead/behind/dirty per repo."""
+
+    def test_no_remote_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")  # no origin_url
+        results = pickaxe.discover_remote_drift(str(root))
+        assert len(results) == 1
+        assert "no-remote" in results[0]["flags"]
+        assert results[0]["ahead"] == 0
+        assert results[0]["behind"] == 0
+
+    def test_clean_repo_no_flags(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["ahead"] == 0
+        assert repo["behind"] == 0
+        assert repo["dirty"] == 0
+        assert repo["flags"] == []
+
+    def test_push_needed_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        upstream, clone = _make_clone_pair(root, "repo-a")
+        # Add a local commit not yet pushed
+        (clone / "extra.txt").write_text("extra\n")
+        subprocess.run(["git", "-C", str(clone), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(clone), "commit", "-m", "local commit"],
+                       capture_output=True, check=True)
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["ahead"] == 1
+        assert "push-needed" in repo["flags"]
+
+    def test_behind_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        upstream, clone = _make_clone_pair(root, "repo-a")
+        # Add a commit to upstream (not yet fetched by clone)
+        (upstream / "new.txt").write_text("new\n")
+        subprocess.run(["git", "-C", str(upstream), "add", "."], capture_output=True, check=True)
+        subprocess.run(["git", "-C", str(upstream), "commit", "-m", "upstream commit"],
+                       capture_output=True, check=True)
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["behind"] == 1
+        assert "behind" in repo["flags"]
+
+    def test_uncommitted_flag(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        # Add an untracked file to the clone
+        clone = root / "repo-a"
+        (clone / "dirty.txt").write_text("dirty\n")
+        results = pickaxe.discover_remote_drift(str(root))
+        repo = next(r for r in results if r["rel"] == "repo-a")
+        assert repo["dirty"] >= 1
+        assert "uncommitted" in repo["flags"]
+
+    def test_result_keys(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_real_repo(root, "repo-a")
+        results = pickaxe.discover_remote_drift(str(root))
+        assert len(results) == 1
+        for key in ("rel", "path", "remote", "branch", "ahead", "behind", "dirty", "flags"):
+            assert key in results[0], f"missing key: {key}"
+
+    def test_cli_returns_zero(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "drift", str(root)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_cli_json_format(self, tmp_path):
+        root = tmp_path / "ws"
+        root.mkdir()
+        _make_clone_pair(root, "repo-a")
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "discover", "drift", str(root), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        assert any(r["rel"] == "repo-a" for r in data)
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE NOUN-DISPATCH — backward compatibility  (A1)
+# --------------------------------------------------------------------------
+
+class TestDiagnoseNounDispatch:
+
+    def test_diagnose_nouns_constant_exists(self):
+        assert hasattr(pickaxe, "DIAGNOSE_NOUNS")
+        assert "instruction-bloat" in pickaxe.DIAGNOSE_NOUNS
+
+    def test_cli_diagnose_plain_path_still_works(self, repo_with_origin):
+        """`pickaxe diagnose <path>` (no noun) must keep working exactly as before."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", str(repo_with_origin), "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["has_git"] is True
+        assert data["has_origin"] is True
+
+    def test_cli_diagnose_default_cwd_still_works(self):
+        """`pickaxe diagnose` with zero args must default to cwd, as before."""
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"), "diagnose", "--format", "json"],
+            capture_output=True, text=True, cwd=HERE,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["has_git"] is True
+
+
+# --------------------------------------------------------------------------
+# DIAGNOSE INSTRUCTION-BLOAT  (A3)
+# --------------------------------------------------------------------------
+
+def _write_bloated_instructions(root, rel_dir="."):
+    """
+    Write a synthetic instructions.md with a known line count and one
+    section ('Big Section') that exceeds a small custom --max-section-lines
+    threshold, plus one that doesn't ('Small Section'). Returns (file, total_lines).
+    """
+    target_dir = (root / rel_dir / ".github") if rel_dir != "." else (root / ".github")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    content = (
+        "# Title\n"
+        "\n"
+        "## Small Section\n"
+        "line1\n"
+        "\n"
+        "## Big Section\n"
+        "line1\n"
+        "line2\n"
+        "line3\n"
+        "line4\n"
+        "line5\n"
+    )
+    f = target_dir / "copilot-instructions.md"
+    f.write_text(content)
+    return f, 11
+
+
+class TestDiagnoseInstructionBloat:
+
+    def test_function_exists(self):
+        assert hasattr(pickaxe, "diagnose_instruction_bloat")
+
+    def test_no_findings_below_thresholds(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=1000)
+        assert findings == []
+
+    def test_whole_file_bloat_detected(self, tmp_path):
+        _, total = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=1000)
+        whole = [x for x in findings if x["kind"] == "whole-file"]
+        assert len(whole) == 1
+        assert whole[0]["start_line"] == 1
+        assert whole[0]["end_line"] == total
+
+    def test_section_bloat_detected(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        sections = [x for x in findings if x["kind"] == "section"]
+        assert len(sections) == 1
+        assert sections[0]["heading"] == "Big Section"
+        assert sections[0]["start_line"] == 6
+        assert sections[0]["end_line"] == 11
+
+    def test_finding_schema_keys(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        assert len(findings) == 2
+        for finding in findings:
+            for key in ("file", "start_line", "end_line", "reason", "kind", "heading"):
+                assert key in finding, f"missing key: {key}"
+
+    def test_nested_submodule_github_dir_found(self, tmp_path):
+        """Root scan (A1 decision) must find .github files nested under a subdir."""
+        _write_bloated_instructions(tmp_path, rel_dir="nested-submodule")
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        files = {f["file"] for f in findings}
+        assert any("nested-submodule" in f for f in files)
+
+    def test_never_mutates(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        before = {p: p.stat().st_mtime for p in tmp_path.rglob("*") if p.is_file()}
+        pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=5, max_section_lines=3)
+        after = {p: p.stat().st_mtime for p in tmp_path.rglob("*") if p.is_file()}
+        assert before == after
+
+    def test_cli_json_format(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", "instruction-bloat", str(tmp_path),
+             "--max-lines", "5", "--max-section-lines", "3", "--format", "json"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert len(data) == 2
+
+    def test_cli_table_format_exit_zero(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "diagnose", "instruction-bloat", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "finding(s)" in result.stdout
+
+
+# --------------------------------------------------------------------------
+# DELIVER INSTRUCTION-ROLLUP  (A2/A4)
+# --------------------------------------------------------------------------
+
+class TestDeliverInstructionRollup:
+
+    def test_functions_exist(self):
+        for fn in ("plan_instruction_rollup", "execute_instruction_rollup"):
+            assert hasattr(pickaxe, fn), f"missing: pickaxe.{fn}"
+
+    def test_dry_run_plan_does_not_mutate(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        before = f.read_text()
+        plans = pickaxe.plan_instruction_rollup(findings, str(tmp_path))
+        assert f.read_text() == before
+        assert len(plans) == 1
+        assert plans[0]["status"] == "planned"
+
+    def test_execute_creates_dest_with_frontmatter(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert len(results) == 1
+        assert results[0]["status"] == "extracted"
+        dest_abs = tmp_path / results[0]["dest"]
+        assert dest_abs.is_file()
+        text = dest_abs.read_text()
+        assert text.startswith("---\n")
+        assert "requires:" in text
+        assert "line1" in text  # extracted content travelled
+
+    def test_execute_replaces_source_lines_with_pointer(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        source_text = f.read_text()
+        assert "Extracted to" in source_text
+        assert "line5" not in source_text  # extracted body no longer in source
+
+    def test_execute_dest_lands_in_github_instructions_subfolder(self, tmp_path):
+        """LB-04: a .github/ source's extraction must land in
+        .github/instructions/ (VS Code's actual auto-discovery path), not
+        loose in .github/ where it would never be auto-loaded."""
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert results[0]["dest"].startswith(".github/instructions/")
+
+    def test_execute_pointer_link_resolves_relative_to_source_dir(self, tmp_path):
+        """LB-04: the markdown link written into the source must resolve
+        correctly from the source file's own directory, not from root."""
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        source_text = f.read_text()
+        m = re.search(r'\]\(([^)]+)\)', source_text)
+        assert m, "no markdown link found in source pointer"
+        link = m.group(1)
+        resolved = (f.parent / link).resolve()
+        assert resolved.is_file(), f"link '{link}' does not resolve to a real file from {f.parent}"
+
+    def test_execute_dest_has_grepable_provenance_comment(self, tmp_path):
+        """MVx (2026-07-30): compact provenance line after frontmatter, in
+        place of a full fenced NOTES block, points back to the source and
+        is greppable via 'Pickaxe(deliver instruction-rollup'."""
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        dest_abs = tmp_path / results[0]["dest"]
+        text = dest_abs.read_text()
+        assert text.startswith("---\n"), "frontmatter must stay on line 1 for applyTo parsing"
+        m = re.search(r'<!-- (.+?)::Pickaxe\(deliver instruction-rollup-v(.+?)\)::\[EXTRACTED-FROM\]\((.+?)\) -->', text)
+        assert m, "provenance comment not found or malformed"
+        ts, version, source_link = m.groups()
+        datetime.datetime.fromisoformat(ts)  # raises if not a real ISO timestamp
+        assert version != "unknown"
+        resolved = (dest_abs.parent / source_link).resolve()
+        assert resolved.is_file(), f"provenance link '{source_link}' does not resolve back to the source"
+
+    def test_execute_idempotent_second_run_skips(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        first = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert first[0]["status"] == "extracted"
+        second = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        assert second[0]["status"] == "already_extracted"
+
+    def test_execute_overlapping_whole_file_and_section_findings(self, tmp_path):
+        """
+        LB-03 regression: a whole-file finding + section findings on the
+        same source (as diagnose_instruction_bloat legitimately produces
+        when a file is both globally bloated and has an oversized section)
+        must not silently drop the section content. The section is skipped
+        as redundant (already inside the whole-file dump) and the whole-file
+        extraction must retain every original line — not just the pointer
+        stub left behind by a prior finding's mutation.
+        """
+        f, total = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1, max_section_lines=3)
+        kinds = {finding["kind"] for finding in findings}
+        assert kinds == {"whole-file", "section"}
+
+        results = pickaxe.execute_instruction_rollup(findings, str(tmp_path))
+        by_kind = {finding["kind"]: r for finding, r in zip(findings, results)}
+
+        assert by_kind["whole-file"]["status"] == "extracted"
+        assert by_kind["section"]["status"] == "skipped_overlap"
+
+        whole_file_dest = tmp_path / by_kind["whole-file"]["dest"]
+        extracted_text = whole_file_dest.read_text()
+        assert "line5" in extracted_text  # full original content, not a stub
+        assert extracted_text.count("\n") - 1 >= total  # frontmatter + full body
+
+        # Section's own destination must never have been created.
+        assert not (tmp_path / by_kind["section"]["dest"]).is_file()
+
+        # Source now holds exactly one pointer to the whole-file dump.
+        source_text = f.read_text()
+        assert source_text.count("Extracted to") == 1
+        assert "line5" not in source_text
+
+    def test_plan_marks_overlap_before_execute(self, tmp_path):
+        """Dry-run plan must report 'skipped_overlap' up front, matching
+        what execute_instruction_rollup will actually do — never claim
+        'planned' for a range execute silently skips."""
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1, max_section_lines=3)
+        plans = pickaxe.plan_instruction_rollup(findings, str(tmp_path))
+        statuses = {p["status"] for p in plans}
+        assert "skipped_overlap" in statuses
+        assert "planned" in statuses
+
+    def test_cli_dry_run_default_leaves_files_untouched(self, tmp_path):
+        f, _ = _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        report = tmp_path / "findings.json"
+        report.write_text(json.dumps(findings))
+        before = f.read_text()
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path), "--from-report", str(report)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert f.read_text() == before
+        assert "planned" in result.stdout
+
+    def test_cli_execute_writes_files(self, tmp_path):
+        _write_bloated_instructions(tmp_path)
+        findings = pickaxe.diagnose_instruction_bloat(str(tmp_path), max_lines=1000, max_section_lines=3)
+        report = tmp_path / "findings.json"
+        report.write_text(json.dumps(findings))
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path),
+             "--from-report", str(report), "--execute"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "extracted" in result.stdout
+        dest_candidates = list((tmp_path / ".github" / "instructions").glob("big-section.instructions.md"))
+        assert len(dest_candidates) == 1
+
+    def test_cli_requires_from_report(self, tmp_path):
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"),
+             "deliver", "instruction-rollup", str(tmp_path)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+
+    def test_cli_deliver_noun_required(self, tmp_path):
+        result = subprocess.run(
+            [sys.executable, os.path.join(HERE, "pickaxe.py"), "deliver"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
 

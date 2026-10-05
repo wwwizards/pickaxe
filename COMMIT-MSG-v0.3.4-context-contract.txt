@@ -1,0 +1,15 @@
+docs(context): define nearest-owner AI training contract
+
+Make pickaxe the sole implementation owner for AI training discovery,
+routing, active-context resolution, synchronization, and promotion.
+
+Define nearest-owner routing, sibling isolation, lifecycle filtering,
+stable UUIDs, content-hash drift detection, and one-way YAML authority.
+Keep the command surface design-only pending the first tested slice.
+
+Refresh the local handoff with current status and marching orders.
+
+## Relations delta
++ pickaxe -> implements: [ai-labs/federation-active-context]
++ pickaxe -> consumes: [ai-labs/federation-protocol]
++ ai-labs-toolkit -> may-render: [pickaxe-context-output]

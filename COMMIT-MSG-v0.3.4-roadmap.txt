@@ -1,0 +1,26 @@
+docs: add dependency-tree exclusion diagnosis roadmap
+
+## Summary
+
+Define a future pickaxe diagnostic for dependency trees that remain visible
+to VS Code watchers, search, Explorer, or Copilot code search.
+
+## Changes
+
+- Check all four relevant VS Code exclusion surfaces.
+- Propose dependency_tree_unexcluded as the diagnostic finding.
+- Use measured combined recovery without claiming a single-setting cause.
+
+## Validation
+
+- Markdown soft-wrap and header checks passed.
+- No command implementation changed.
+
+## Relations delta
+
++ pickaxe diagnose -> detects: [dependency-tree-exclusion-gaps]
+
+## Stats
+
+- Billable: 0h (internal tooling)
+- Scope: pickaxe roadmap

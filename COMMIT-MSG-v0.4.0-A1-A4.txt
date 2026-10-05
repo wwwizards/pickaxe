@@ -1,0 +1,31 @@
+feat: v0.4.0 - diagnose instruction-bloat + first-ever deliver verb (A1-A4)
+
+Ships the full Q3 A-tier sprint from features-listing.md:
+
+- A1: retrofit `diagnose` with noun-dispatch (DIAGNOSE_NOUNS), mirroring
+  `discover`'s existing pattern. 100% backward-compatible with the
+  existing single-arg `diagnose [path]` invocation.
+- A2: add the first-ever top-level `deliver` subparser + `_cmd_deliver`
+  dispatch (DELIVER_NOUNS).
+- A3: `diagnose instruction-bloat [root]` - recursive scan (mirrors
+  discover/scan walk + SKIP_DIRS) of AGENTS.md, SKILL.md,
+  copilot-instructions.md, *.instructions.md files; flags whole-file
+  (--max-lines, default 1000) and per-section heading (--max-section-lines,
+  default 50) line-count bloat.
+- A4: `deliver instruction-rollup <root> --from-report <findings.json>
+  [--execute]` - dry-run plan by default, extracts flagged blocks into
+  new <slug>.instructions.md files using the Instruction Inheritance
+  Pattern frontmatter, idempotent (dest-exists check precedes any
+  source mutation).
+
+Tests: 21 new (TestDiagnoseNounDispatch x3, TestDiagnoseInstructionBloat
+x8, TestDeliverInstructionRollup x10) - 119/119 total green.
+
+Docs: STATE.md, DESIGN.md, FEATURE.md, ROADMAP.md, features-listing.md,
+features-map.md all bumped 0.3.4/0.3.6 -> 0.4.0 together per the
+2026-07-29 version-mirroring decision. features-listing.md A-tier
+checkboxes checked off; diagnose/deliver track sections updated to
+shipped (green); features-map.md mermaid diagram nodes G2/G3/L1/L2
+recolored green.
+
+Thumbprint: Claude(Sonnet5)::WIZ-00.Copilot::pickaxe.SOLOMON
